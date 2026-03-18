@@ -18,7 +18,7 @@ cd Api-Predict-DualBiz
 2. **Crear entorno virtual:**
 ```bash
 python -m venv venv
-venv\Scripts\activate
+.venv\Scripts\activate
 ```
 
 3. **Instalar dependencias:**

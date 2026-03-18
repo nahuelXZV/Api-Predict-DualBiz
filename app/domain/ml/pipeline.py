@@ -1,15 +1,19 @@
+from typing import Generic, TypeVar
+
 from app.domain.ml.base_step import BaseTrainingStep
 from app.core.logging import logger
 
-from app.domain.ml.context import TrainingContext
+from app.domain.ml.context import BaseContext
+ 
+T = TypeVar("T")
 
-class TrainingPipeline:
+class BasePipeline(Generic[T]):
     def __init__(self, steps: list[BaseTrainingStep]) -> None:
         if not steps:
-            raise ValueError("TrainingPipeline: la lista de steps no puede estar vacía.")
+            raise ValueError("BasePipeline: la lista de steps no puede estar vacía.")
         self._steps = steps
 
-    def run(self, ctx: TrainingContext) -> TrainingContext:
+    def run(self, ctx: BaseContext) -> BaseContext:
         step_names = [s.name for s in self._steps]
 
         logger.info(

@@ -22,6 +22,14 @@ class BaseContext:
     def has_errors(self) -> bool:
         return len(self.errors) > 0
     
+    def summary(self) -> dict:
+        return {
+            "model_name":     self.model_name,
+            "version":        self.version,
+            "steps_executed": self.steps_executed,
+            "errors":         self.errors,
+            "success":        not self.has_errors,
+        }
     
 @dataclass
 class TrainingContext(BaseContext):
@@ -33,24 +41,9 @@ class TrainingContext(BaseContext):
     y_test:       np.ndarray   | None  = None
     trained_model: Any                 = None   # después de TrainStep
 
-    def summary(self) -> dict:
-        return {
-            "model_name":     self.model_name,
-            "version":        self.version,
-            "steps_executed": self.steps_executed,
-            "errors":         self.errors,
-            "success":        not self.has_errors,
-        }
+  
     
 @dataclass
 class InferenceContext(BaseContext):
     data:   pd.DataFrame | None  = None   # después de CleanStep
     
-    def summary(self) -> dict:
-        return {
-            "model_name":     self.model_name,
-            "version":        self.version,
-            "steps_executed": self.steps_executed,
-            "errors":         self.errors,
-            "success":        not self.has_errors,
-        }
