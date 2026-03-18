@@ -12,7 +12,7 @@ from app.ml.training.context import TrainingContext
 
 BASE_DIR = Path(__file__).resolve().parents[5]  
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"
-MODEL_PATH = BASE_DIR / "storage" / "models" / "modelo_knn.pkl"
+MODEL_PATH = BASE_DIR / "storage" / "models" 
 
 class LoadDataStep(BaseTrainingStep):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -123,9 +123,9 @@ class SaveModelStep(BaseTrainingStep):
                 "model": model,
                 "df": df
             },
-            MODEL_PATH
+            f"{MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}"
         )
-        print(f"Modelo guardado en {MODEL_PATH}")
+        print(f"Modelo guardado en {MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}")
         return ctx
     
     
