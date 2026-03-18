@@ -1,18 +1,7 @@
-"""
-Pipeline factory para el modelo Iris.
-El TrainingJob solo llama a build_iris_pipeline() — no sabe nada de los steps internos.
-"""
-
 from app.ml.training.pipeline import TrainingPipeline
-from app.ml.training.steps.ingest import IngestStep          # compartido
 from app.ml.training.model_steps.iris.steps import (
-    IrisCleanStep,
-    IrisFeatureStep,
-    IrisTrainStep,
-    IrisEvaluateStep,
-    IrisRegisterStep,
+    LoadDataStep,
 )
-
 
 def build_iris_pipeline(
     model_path: str    = "models/",
@@ -42,10 +31,5 @@ def build_iris_pipeline(
         result = pipeline.run(ctx)
     """
     return TrainingPipeline(steps=[
-        IngestStep(),
-        IrisCleanStep(),
-        IrisFeatureStep(target_column="species", test_size=0.2),
-        IrisTrainStep(),
-        IrisEvaluateStep(min_accuracy=min_accuracy),
-        IrisRegisterStep(model_path=model_path),
+        LoadDataStep(),
     ])

@@ -1,16 +1,34 @@
-from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
+class ModelNotLoadedError(RuntimeError):
+    def __init__(self, name: str) -> None:
+        super().__init__(f"El modelo '{name}' no fue cargado. Llamá load() primero.")
 
-class ModelNotFoundError(Exception):
-    def __init__(self, name: str):
+
+class PredictProbaNotSupportedError(NotImplementedError):
+    def __init__(self, name: str) -> None:
+        super().__init__(f"El modelo '{name}' no soporta predict_proba().")
+        
+        
+        
+# Excepciones del registry
+class ModelNotFoundError(KeyError):
+    """El modelo solicitado no existe en el registry."""
+    def __init__(self, name: str) -> None:
         self.name = name
+        super().__init__(f"Modelo '{name}' no encontrado en el registry.")
 
-class ModelNotReadyError(Exception):
-    pass
 
-# Handlers que se registran en main.py
-async def model_not_found_handler(request: Request, exc: ModelNotFoundError):
-    return JSONResponse(status_code=404, content={"detail": f"Modelo '{exc.name}' no encontrado"})
+class ModelNotReadyError(RuntimeError):
+    """El modelo existe pero no fue cargado correctamente."""
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f"Modelo '{name}' existe pero no está listo (is_loaded=False).")
 
-async def model_not_ready_handler(request: Request, exc: ModelNotReadyError):
-    return JSONResponse(status_code=503, content={"detail": "Modelo no está listo"})
+
+class ModelAlreadyExistsError(ValueError):
+    """Se intenta registrar un nombre que ya existe sin allow_override."""
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(
+            f"Modelo '{name}' ya está registrado. "
+            "Usá allow_override=True para reemplazarlo."
+        )

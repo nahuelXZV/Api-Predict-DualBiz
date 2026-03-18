@@ -1,14 +1,6 @@
-"""
-TrainingPipeline — orquestador de steps.
-
-No contiene lógica de negocio. Su única responsabilidad es
-iterar los steps en orden y pasar el contexto de uno al siguiente.
-"""
-
-from app.ml.training.base_step import BaseTrainingStep
+from app.domain.base_step import BaseTrainingStep
 from app.ml.training.context import TrainingContext
 from app.core.logging import logger
-
 
 class TrainingPipeline:
     """
@@ -61,8 +53,6 @@ class TrainingPipeline:
                 )
                 break
 
-            # Ejecutar step — el __call__ de BaseTrainingStep
-            # agrega logging y trazabilidad automáticamente
             ctx = step(ctx)
 
         logger.info(
@@ -76,17 +66,7 @@ class TrainingPipeline:
 
         return ctx
 
-    # ------------------------------------------------------------------
-    # Inspección
-    # ------------------------------------------------------------------
 
     @property
     def steps(self) -> list[BaseTrainingStep]:
         return list(self._steps)
-
-    def __len__(self) -> int:
-        return len(self._steps)
-
-    def __repr__(self) -> str:
-        names = [s.name for s in self._steps]
-        return f"TrainingPipeline(steps={names})"
