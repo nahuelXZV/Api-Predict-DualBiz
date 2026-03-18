@@ -9,6 +9,5 @@ class TrainResponse(BaseModel):
     model_name:     str
     version:        str
     steps_executed: list[str]
-    metrics:        dict
     errors:         list[str]
     success:        bool
