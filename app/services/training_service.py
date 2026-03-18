@@ -1,5 +1,5 @@
-from app.ml.training.context import TrainingContext
-from app.ml.training.model_steps.knn.pipeline import build_knn_pipeline
+from app.domain.ml.context import TrainingContext
+from app.ml.training.knn.pipeline import build_knn_pipeline
 
 class TrainingService:
 

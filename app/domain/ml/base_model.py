@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 
 from app.core.exceptions import ModelNotLoadedError
-from app.domain.model_metadata import ModelMetadata
+from app.domain.ml.model_metadata import ModelMetadata
        
 class BaseMLModel(ABC):
     """
@@ -54,6 +54,10 @@ class BaseMLModel(ABC):
         Returns:
             array de shape (n_samples,)
         """
+        ...
+
+    @abstractmethod
+    def training(self, x: np.ndarray) -> np.ndarray:
         ...
 
     @property

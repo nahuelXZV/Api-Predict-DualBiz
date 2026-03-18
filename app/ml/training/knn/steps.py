@@ -7,8 +7,8 @@ from sklearn.discriminant_analysis import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import Pipeline
 
-from app.domain.base_step import BaseTrainingStep
-from app.ml.training.context import TrainingContext
+from app.domain.ml.base_step import BaseTrainingStep
+from app.domain.ml.context import TrainingContext
 
 BASE_DIR = Path(__file__).resolve().parents[5]  
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"

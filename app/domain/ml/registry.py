@@ -4,7 +4,7 @@ import threading
 from typing import Iterator
 
 from app.core.exceptions import ModelAlreadyExistsError, ModelNotFoundError, ModelNotReadyError
-from app.domain.base_model import BaseMLModel
+from app.domain.ml.base_model import BaseMLModel
 from app.core.logging import logger
 
 class ModelRegistry:

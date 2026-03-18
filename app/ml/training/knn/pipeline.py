@@ -1,5 +1,5 @@
-from app.ml.training.model_steps.knn.steps import AddDerivedFeatureStep, CleanColumnsStep, SaveModelStep, TransformColumnsStep, LoadDataStep
-from app.ml.training.pipeline import TrainingPipeline
+from app.domain.ml.pipeline import TrainingPipeline
+from app.ml.training.knn.steps import AddDerivedFeatureStep, CleanColumnsStep, SaveModelStep, TransformColumnsStep, LoadDataStep
 
 def build_knn_pipeline() -> TrainingPipeline:
     return TrainingPipeline(steps=[
