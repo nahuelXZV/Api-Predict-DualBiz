@@ -10,7 +10,7 @@ from sklearn.pipeline import Pipeline
 from app.domain.base_step import BaseTrainingStep
 from app.ml.training.context import TrainingContext
 
-BASE_DIR = Path(__file__).resolve().parents[0]  
+BASE_DIR = Path(__file__).resolve().parents[5]  
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"
 MODEL_PATH = BASE_DIR / "storage" / "models" / "modelo_knn.pkl"
 
@@ -27,7 +27,6 @@ class LoadDataStep(BaseTrainingStep):
     
     
 class AddDerivedFeatureStep(BaseTrainingStep):
-
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.raw_data is None:
             ctx.errors.append("CleanDataStep: raw_data es None, LoadDataStep no se ejecutó.")
@@ -56,7 +55,7 @@ class AddDerivedFeatureStep(BaseTrainingStep):
 
         # 6. Limpieza y Exportación
         df['DiasEntreCompras'] = df['DiasEntreCompras'].fillna(0)
-        
+
         ctx.clean_data = df
         return ctx
     
@@ -70,12 +69,12 @@ class CleanColumnsStep(BaseTrainingStep):
         df = ctx.clean_data.copy()   
         df_limpio = df.dropna(subset=['ID_Cliente', 'Producto', 'CantidadVendida'])
         df_limpio = df_limpio[df_limpio['CantidadVendida'] > 0]
-        
-        ctx.clean_data = df
+        df_limpio = df_limpio.dropna()
+
+        ctx.clean_data = df_limpio
         return ctx
     
 class TransformColumnsStep(BaseTrainingStep):
-    
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
             ctx.errors.append("CleanDataStep: clean_data es None, TransformColumnsStep no se ejecutó.")
@@ -97,7 +96,7 @@ class TransformColumnsStep(BaseTrainingStep):
         kmeans = KMeans(n_clusters=5, init='k-means++', random_state=42, n_init=10)
         perfil_clientes['Cluster'] = kmeans.fit_predict(X_scaled)
         
-        ctx.extra["X_scaled"] = X_scaled
+        ctx.extra["x_scaled"] = X_scaled
         ctx.extra["perfil_clientes"] = perfil_clientes
         ctx.clean_data = df
         return ctx
@@ -126,6 +125,7 @@ class SaveModelStep(BaseTrainingStep):
             },
             MODEL_PATH
         )
+        print(f"Modelo guardado en {MODEL_PATH}")
         return ctx
     
     
