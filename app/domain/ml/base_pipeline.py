@@ -1,9 +1,9 @@
 from typing import Generic, TypeVar
 
 from app.domain.ml.base_step import BaseTrainingStep
-from app.core.logging import logger
+from app.domain.core.logging import logger
 
-from app.domain.ml.context import BaseContext
+from app.domain.ml.base_context import BaseContext
  
 T = TypeVar("T")
 

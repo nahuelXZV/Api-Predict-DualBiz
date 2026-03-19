@@ -11,3 +11,10 @@ class TrainResponse(BaseModel):
     steps_executed: list[str]
     errors:         list[str]
     success:        bool
+    
+class PredictResponse(BaseModel):
+    model_name:  str
+    version:     str
+    records:     int
+    errors:      list[str]
+    success:     bool

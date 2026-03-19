@@ -18,6 +18,4 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-#app.add_exception_handler(ModelNotFoundError, model_not_found_handler)
-#app.add_exception_handler(ModelNotReadyError, model_not_ready_handler)
 app.include_router(router)
