@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from app.core.logging import logger
-from app.domain.ml.context import TrainingContext
+from app.domain.core.logging import logger
+from app.domain.ml.base_context import TrainingContext
 
 class BaseTrainingStep(ABC):
     @abstractmethod

@@ -7,8 +7,12 @@ from sklearn.discriminant_analysis import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import Pipeline
 
+from app.domain.ml.base_model import BaseMLModel
 from app.domain.ml.base_step import BaseTrainingStep
-from app.domain.ml.context import TrainingContext
+from app.domain.ml.base_context import TrainingContext
+from app.domain.ml.model_metadata import ModelMetadata
+from app.domain.ml.model_registry import model_registry
+from app.ml.models.knn_model import KnnModel
 
 BASE_DIR = Path(__file__).resolve().parents[4]  
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"
@@ -129,3 +133,14 @@ class SaveModelStep(BaseTrainingStep):
         return ctx
     
     
+class RegistryModelStep(BaseTrainingStep):
+    def execute(self, ctx: TrainingContext) -> TrainingContext:
+        meta_data = ModelMetadata(name=ctx.model_name, version=ctx.version)
+        model = KnnModel(metadata=meta_data)
+        model.load(f"{MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}")
+        
+        model_registry.register(
+            name = ctx.model_name,
+            model = model,
+        )
+        return ctx

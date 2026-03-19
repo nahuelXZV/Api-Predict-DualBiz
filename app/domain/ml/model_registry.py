@@ -3,40 +3,11 @@ from __future__ import annotations
 import threading
 from typing import Iterator
 
-from app.core.exceptions import ModelAlreadyExistsError, ModelNotFoundError, ModelNotReadyError
+from app.domain.core.exceptions import ModelAlreadyExistsError, ModelNotFoundError, ModelNotReadyError
 from app.domain.ml.base_model import BaseMLModel
-from app.core.logging import logger
+from app.domain.core.logging import logger
 
 class ModelRegistry:
-    """
-    Registro central de modelos ML en memoria.
-
-    Responsabilidades:
-      - Almacenar instancias de BaseMLModel indexadas por nombre.
-      - Garantizar acceso thread-safe (hot reload sin downtime).
-      - Proveer consultas por nombre, listado y limpieza de memoria.
-
-    Qué NO hace:
-      - No carga archivos .pkl — eso es responsabilidad de cada modelo y del RegisterStep.
-      - No conoce rutas de disco ni storage.
-      - No conoce FastAPI ni schedulers.
-
-    Uso típico:
-        # Al iniciar la app (lifespan)
-        model = IrisClassifier(metadata)
-        model.load("models/iris_v1.pkl")
-        model_registry.register("iris", model)
-
-        # En PredictionService o BatchPredictJob
-        model = model_registry.get("iris")
-        predictions = model.predict(X)
-
-        # Hot reload sin downtime (desde AdminEndpoint o TrainingJob)
-        new_model = IrisClassifier(new_metadata)
-        new_model.load("models/iris_v2.pkl")
-        model_registry.register("iris", new_model, allow_override=True)
-    """
-
     def __init__(self) -> None:
         self._models: dict[str, BaseMLModel] = {}
         self._lock   = threading.Lock()

@@ -7,7 +7,6 @@ import pandas as pd
 
 @dataclass
 class BaseContext:
-    """Campos mínimos que todo contexto debe tener para que el pipeline funcione."""
     model_name:     str       = ""
     version:      str  = ""
     data_path:    str  = ""
