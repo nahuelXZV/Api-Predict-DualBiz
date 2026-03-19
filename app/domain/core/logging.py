@@ -1,5 +1,5 @@
 import structlog, logging
-from app.core.config import settings
+from app.domain.core.config import settings
 
 def setup_logging() -> None:
     logging.basicConfig(level=settings.log_level)
