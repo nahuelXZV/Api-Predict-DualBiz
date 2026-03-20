@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-from app.api.v1.schemas.training import TrainResponse
+from app.domain.dtos.training_dto import TrainResponseDTO
 from app.application.services.training_service import TrainingService
+from app.domain.dtos.response_dto import ResponseDTO
 
 router = APIRouter()
 
-@router.get("/train", response_model=TrainResponse)
+@router.get("/train", response_model=ResponseDTO[TrainResponseDTO])
 async def train(model_name: str = "knn", version: str = "1.0",):
     service = TrainingService()
     result  = service.run(
@@ -12,4 +13,4 @@ async def train(model_name: str = "knn", version: str = "1.0",):
         version     = version,
         hyperparams = {},
     )
-    return result
+    return ResponseDTO(success=True, message="Training completed successfully", data=result)

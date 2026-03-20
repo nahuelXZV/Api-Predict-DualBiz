@@ -4,6 +4,7 @@ import threading
 from typing import Iterator
 
 from app.domain.core.exceptions import ModelAlreadyExistsError, ModelNotFoundError, ModelNotReadyError
+from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
 from app.domain.ml.base_model import BaseMLModel
 from app.domain.core.logging import logger
 
@@ -65,19 +66,12 @@ class ModelRegistry:
     def exists(self, name: str) -> bool:
         return name in self._models
 
-    def list_models(self) -> list[dict]:
+    def list_models(self) -> list[ModelMetadataDTO]:
         with self._lock:
             snapshot = list(self._models.items())
 
         return [
-            {
-                "name":          name,
-                "version":       model.version,
-                "is_loaded":     model.is_loaded,
-                "loaded_at":     model.metadata.loaded_at.isoformat(),
-                "feature_names": model.metadata.feature_names,
-                "metrics":       model.metadata.metrics,
-            }
+            model.metadata.to_dto() 
             for name, model in snapshot
         ]
 

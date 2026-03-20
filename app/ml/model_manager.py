@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from app.domain.core.exceptions import ModelNotFoundError
 from app.domain.core.logging import logger
+from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
+from app.domain.dtos.training_dto import TrainResponseDTO
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.base_context import TrainingContext
 from app.ml.training.knn.pipeline import build_knn_pipeline
@@ -15,7 +17,7 @@ def _get_train_pipelines() -> dict:
 
 class ModelManager:
 
-    def train(self, model_name:  str, version:str, hyperparams: dict = {}) -> dict:
+    def train(self, model_name:  str, version:str, hyperparams: dict = {}) -> TrainResponseDTO:
         logger.info("manager_train_start", model=model_name, version=version)
 
         builder = _get_train_pipelines().get(model_name)
@@ -48,4 +50,7 @@ class ModelManager:
         model = model_registry.get(model_name)
         return model.predict(data)
 
+    def list_models(self) -> list[ModelMetadataDTO]:
+        return model_registry.list_models()
+    
 model_manager = ModelManager()

@@ -5,9 +5,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from app.domain.dtos.training_dto import TrainResponseDTO
+
 @dataclass
 class BaseContext:
-    model_name:     str       = ""
+    model_name:     str  = ""
     version:      str  = ""
     data_path:    str  = ""
     hyperparams:  dict[str, Any] = field(default_factory=dict)
@@ -21,14 +23,14 @@ class BaseContext:
     def has_errors(self) -> bool:
         return len(self.errors) > 0
     
-    def summary(self) -> dict:
-        return {
-            "model_name":     self.model_name,
-            "version":        self.version,
-            "steps_executed": self.steps_executed,
-            "errors":         self.errors,
-            "success":        not self.has_errors,
-        }
+    def summary(self) -> TrainResponseDTO:
+        return TrainResponseDTO(
+            model_name=self.model_name,
+            version=self.version,
+            steps_executed=self.steps_executed,
+            errors=self.errors,
+            success=not self.has_errors
+        )
     
 @dataclass
 class TrainingContext(BaseContext):
