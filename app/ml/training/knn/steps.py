@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parents[4]
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"
 MODEL_PATH_BASE = BASE_DIR / "storage" / "models" 
 
-class LoadDataStep(BaseTrainingStep):
+class LoadDataStep(BaseTrainingStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         df = pd.read_csv(DATA_PATH)
         print("Dataset original")
@@ -30,7 +30,7 @@ class LoadDataStep(BaseTrainingStep):
         return ctx
     
     
-class AddDerivedFeatureStep(BaseTrainingStep):
+class AddDerivedFeatureStep(BaseTrainingStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.raw_data is None:
             ctx.errors.append("CleanDataStep: raw_data es None, LoadDataStep no se ejecutó.")
@@ -64,7 +64,7 @@ class AddDerivedFeatureStep(BaseTrainingStep):
         return ctx
     
         
-class CleanColumnsStep(BaseTrainingStep):
+class CleanColumnsStep(BaseTrainingStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
             ctx.errors.append("CleanDataStep: clean_data es None, CleanColumnsStep no se ejecutó.")
@@ -78,7 +78,7 @@ class CleanColumnsStep(BaseTrainingStep):
         ctx.clean_data = df_limpio
         return ctx
     
-class TransformColumnsStep(BaseTrainingStep):
+class TransformColumnsStep(BaseTrainingStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
             ctx.errors.append("CleanDataStep: clean_data es None, TransformColumnsStep no se ejecutó.")
@@ -107,13 +107,13 @@ class TransformColumnsStep(BaseTrainingStep):
     
 
     
-class SaveModelStep(BaseTrainingStep): 
+class SaveModelStep(BaseTrainingStep[TrainingContext]): 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
             ctx.errors.append("CleanDataStep: clean_data es None, StandarizationStep no se ejecutó.")
             return ctx
         
-        df = ctx.clean_data.copy()   
+        df = ctx.extra["x_scaled"].copy()   
         model = Pipeline([
             ("knn", NearestNeighbors(
                 n_neighbors=29,
@@ -135,11 +135,11 @@ class SaveModelStep(BaseTrainingStep):
         return ctx
     
     
-class RegistryModelStep(BaseTrainingStep):
+class RegistryModelStep(BaseTrainingStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         path_model = str(ctx.extra.get("path_model"))
    
-        meta_data = ModelMetadata(name=ctx.model_name, version=ctx.version, path_model=path_model)
+        meta_data = ModelMetadata(name=ctx.model_name, version=ctx.version, path_model=path_model,extra=ctx.extra)
         model = KnnModel(metadata=meta_data)
         model.load(path_model)
         

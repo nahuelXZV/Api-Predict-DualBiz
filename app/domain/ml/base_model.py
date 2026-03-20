@@ -16,7 +16,7 @@ class BaseMLModel(ABC):
         ...
 
     @abstractmethod
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: dict) -> pd.DataFrame:
         ...
 
     @property

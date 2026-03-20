@@ -5,7 +5,7 @@ from app.domain.core.logging import logger
 
 from app.domain.ml.base_context import BaseContext
  
-T = TypeVar("T")
+T = TypeVar("T", bound=BaseContext) 
 
 class BasePipeline(Generic[T]):
     def __init__(self, steps: list[BaseTrainingStep]) -> None:
@@ -13,7 +13,7 @@ class BasePipeline(Generic[T]):
             raise ValueError("BasePipeline: la lista de steps no puede estar vacía.")
         self._steps = steps
 
-    def run(self, ctx: BaseContext) -> BaseContext:
+    def run(self, ctx: T) -> T:
         step_names = [s.name for s in self._steps]
 
         logger.info(
