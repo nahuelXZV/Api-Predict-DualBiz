@@ -5,14 +5,16 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
 from app.domain.core.exceptions import ModelNotLoadedError
+from app.domain.ml.base_context import PredictContext, TrainingContext
 from app.domain.ml.base_model import BaseMLModel
 from app.domain.ml.model_metadata import ModelMetadata
+from app.ml.predict.knn.pipeline import predict_knn_pipeline
 
 
 class KnnModel(BaseMLModel):
     def __init__(self, metadata: ModelMetadata) -> None:
         super().__init__(metadata)
-        self._model: RandomForestClassifier | None = None
+        # self._model: RandomForestClassifier | None = None
 
     def load(self, path: str) -> None:
         loaded = joblib.load(path)
@@ -25,8 +27,20 @@ class KnnModel(BaseMLModel):
         #     )
         self._model = loaded
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, data: dict) -> pd.DataFrame:
         if self._model is None:
             raise ModelNotLoadedError(self.metadata.name)
+        
+        ctx = PredictContext(
+            model_name  = self.metadata.name,
+            version     = self.metadata.version,
+            hyperparams = self.metadata.hyperparams,
+            extra       = self.metadata.extra,
+            model      = self._model,
+            data = data
+        )
 
-        return self._model.predict(X)
+        pipeline = predict_knn_pipeline()
+        ctx=pipeline.run(ctx)
+        response = ctx.data_response
+        return response

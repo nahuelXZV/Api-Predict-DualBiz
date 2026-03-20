@@ -38,6 +38,5 @@ class ModelMetadata:
             hyperparams=self.hyperparams,
             loaded_at=self.loaded_at,
             trained_at=self.trained_at,
-            extra=self.extra,
             path_model=self.path_model
         )

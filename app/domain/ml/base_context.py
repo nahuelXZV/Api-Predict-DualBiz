@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from app.domain.dtos.training_dto import TrainResponseDTO
+from app.domain.ml.base_model import BaseMLModel
 
 @dataclass
 class BaseContext:
@@ -45,6 +46,7 @@ class TrainingContext(BaseContext):
   
     
 @dataclass
-class InferenceContext(BaseContext):
-    data:   pd.DataFrame | None  = None   # después de CleanStep
-    
+class PredictContext(BaseContext):
+    data:        dict[str, Any]       = field(default_factory=dict)
+    model:  Any = None   # el modelo cargado, para usar en pasos posteriores
+    data_response : pd.DataFrame | None = None  # el resultado de la predicción, para usar en pasos posteriores

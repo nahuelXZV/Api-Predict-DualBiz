@@ -38,8 +38,8 @@ class ModelManager:
 
         return result.summary()
 
-    def predict(self, model_name: str, version: str, data: pd.DataFrame) -> np.ndarray:
-        logger.info("manager_predict_start", model=model_name, version=version)
+    def predict(self, model_name: str, data:dict) -> pd.DataFrame:
+        logger.info("manager_predict_start", model=model_name)
 
         if not model_registry.exists(model_name):
             raise ModelNotFoundError(

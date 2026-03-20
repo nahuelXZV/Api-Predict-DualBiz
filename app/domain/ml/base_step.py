@@ -1,14 +1,17 @@
 from abc import ABC, abstractmethod
+from typing import Generic, TypeVar
 
 from app.domain.core.logging import logger
-from app.domain.ml.base_context import TrainingContext
+from app.domain.ml.base_context import BaseContext
 
-class BaseTrainingStep(ABC):
+T = TypeVar("T", bound=BaseContext) 
+
+class BaseTrainingStep(ABC, Generic[T]):
     @abstractmethod
-    def execute(self, ctx: TrainingContext) -> TrainingContext:
+    def execute(self, ctx: T) -> T:
         ...
 
-    def __call__(self, ctx: TrainingContext) -> TrainingContext:
+    def __call__(self, ctx: T) -> T:
         logger.info(
             "step_started",
             step  = self.name,
