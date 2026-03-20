@@ -8,9 +8,10 @@ class PredictService:
             model_name=model_name,
             data = hyperparams
         )
+        print(f"PredictService: response={response}")
         return PredictResponseDTO (
             model_name=model_name,
-            predictions=response,
+            predictions=response.to_dict(orient="records"),
             success=True
         )
         
