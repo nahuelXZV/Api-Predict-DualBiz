@@ -16,7 +16,7 @@ from app.ml.models.knn_model import KnnModel
 
 BASE_DIR = Path(__file__).resolve().parents[4]  
 DATA_PATH = BASE_DIR / "storage" / "data" / "base.csv"
-MODEL_PATH = BASE_DIR / "storage" / "models" 
+MODEL_PATH_BASE = BASE_DIR / "storage" / "models" 
 
 class LoadDataStep(BaseTrainingStep):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -120,6 +120,8 @@ class SaveModelStep(BaseTrainingStep):
                 metric="cosine"
             ))
         ])
+        path_model = MODEL_PATH_BASE / f'modelo_{ctx.model_name}_{ctx.version}.pkl'
+        ctx.extra["path_model"] = path_model
 
         model.fit(df)
         joblib.dump(
@@ -127,17 +129,19 @@ class SaveModelStep(BaseTrainingStep):
                 "model": model,
                 "df": df
             },
-            f"{MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}"
+            str(path_model)
         )
-        print(f"Modelo guardado en {MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}")
+        print(f"Modelo guardado en {path_model}")
         return ctx
     
     
 class RegistryModelStep(BaseTrainingStep):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        meta_data = ModelMetadata(name=ctx.model_name, version=ctx.version)
+        path_model = str(ctx.extra.get("path_model"))
+   
+        meta_data = ModelMetadata(name=ctx.model_name, version=ctx.version, path_model=path_model)
         model = KnnModel(metadata=meta_data)
-        model.load(f"{MODEL_PATH / f'modelo_{ctx.model_name}_{ctx.version}.pkl'}")
+        model.load(path_model)
         
         model_registry.register(
             name = ctx.model_name,
