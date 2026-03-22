@@ -8,10 +8,12 @@ from app.domain.ml.base_context import BaseContext
 T = TypeVar("T", bound=BaseContext) 
 
 class BasePipeline(Generic[T]):
-    def __init__(self, steps: list[BaseTrainingStep]) -> None:
-        if not steps:
-            raise ValueError("BasePipeline: la lista de steps no puede estar vacía.")
-        self._steps = steps
+
+    def __init__(self) -> None:
+        self._steps = []
+
+    def add_step(self, step: BaseTrainingStep) -> None:
+        self._steps.append(step)
 
     def run(self, ctx: T) -> T:
         step_names = [s.name for s in self._steps]

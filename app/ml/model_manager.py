@@ -1,5 +1,4 @@
 from __future__ import annotations
-import numpy as np
 import pandas as pd
 from app.domain.core.exceptions import ModelNotFoundError
 from app.domain.core.logging import logger
@@ -7,11 +6,11 @@ from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
 from app.domain.dtos.training_dto import TrainResponseDTO
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.base_context import TrainingContext
-from app.ml.training.knn.pipeline import build_knn_pipeline
+from app.ml.training.pedido_sugerido.pipeline import build_pedido_sugerido_pipeline
 
 def _get_train_pipelines() -> dict:
     return {
-        "knn": build_knn_pipeline,
+        "pedido_sugerido": build_pedido_sugerido_pipeline,
         # "svm": build_svm_pipeline,
     }
 
