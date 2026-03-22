@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 import pandas as pd
 from app.domain.ml.base_context import PredictContext
 from app.domain.ml.base_step import BaseTrainingStep

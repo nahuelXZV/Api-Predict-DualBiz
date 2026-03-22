@@ -5,12 +5,14 @@ from app.domain.core.config import settings
 from app.domain.core.logging import setup_logging, logger
 from app.api.v1.router import router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("startup", env=settings.app_env)
     yield
     logger.info("shutdown")
+
 
 app = FastAPI(
     title=settings.app_name,
