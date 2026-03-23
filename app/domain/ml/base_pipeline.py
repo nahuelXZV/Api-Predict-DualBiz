@@ -1,6 +1,6 @@
 from typing import Generic, TypeVar
 
-from app.domain.ml.base_step import BaseTrainingStep
+from app.domain.ml.base_step import BaseStep
 from app.domain.core.logging import logger
 
 from app.domain.ml.base_context import BaseContext
@@ -12,7 +12,7 @@ class BasePipeline(Generic[T]):
     def __init__(self) -> None:
         self._steps = []
 
-    def add_step(self, step: BaseTrainingStep) -> None:
+    def add_step(self, step: BaseStep[T]) -> None:
         self._steps.append(step)
 
     def run(self, ctx: T) -> T:
@@ -53,5 +53,5 @@ class BasePipeline(Generic[T]):
 
 
     @property
-    def steps(self) -> list[BaseTrainingStep]:
+    def steps(self) -> list[BaseStep[T]]:
         return list(self._steps)

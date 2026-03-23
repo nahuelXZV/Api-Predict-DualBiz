@@ -1,23 +1,21 @@
 from abc import ABC, abstractmethod
 from typing import Any
-import numpy as np
 import pandas as pd
 
 from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.model_metadata import ModelMetadata
-       
+
+
 class BaseMLModel(ABC):
     def __init__(self, metadata: ModelMetadata) -> None:
         self._metadata: ModelMetadata = metadata
-        self._model: Any = None         
+        self._model: Any = None
 
     @abstractmethod
-    def load(self, path: str) -> None:
-        ...
+    def load(self, path: str) -> None: ...
 
     @abstractmethod
-    def predict(self, X: dict) -> pd.DataFrame:
-        ...
+    def predict(self, data: dict) -> pd.DataFrame: ...
 
     @property
     def is_loaded(self) -> bool:

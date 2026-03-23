@@ -7,7 +7,7 @@ def setup_logging() -> None:
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.add_log_level,
-            structlog.dev.ConsoleRenderer() if settings.debug
+            structlog.dev.ConsoleRenderer() if settings.app_debug
             else structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.BoundLogger,

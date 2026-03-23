@@ -2,9 +2,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "ml-api"
+    app_version: str = "1.0.0"   # ← agregar
     app_env: str = "development"
-    debug: bool = False
-    model_path: str = "models"
+    app_debug: bool = False       # ← renombrar de debug a app_debug
     log_level: str = "INFO"
 
     path_models: str = "storage/models"
