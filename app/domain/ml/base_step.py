@@ -6,7 +6,7 @@ from app.domain.ml.base_context import BaseContext
 
 T = TypeVar("T", bound=BaseContext) 
 
-class BaseTrainingStep(ABC, Generic[T]):
+class BaseStep(ABC, Generic[T]):
     @abstractmethod
     def execute(self, ctx: T) -> T:
         ...
