@@ -6,7 +6,7 @@ from app.domain.dtos.response_dto import ResponseDTO
 router = APIRouter()
 
 @router.get("/train", response_model=ResponseDTO[TrainResponseDTO])
-async def train(model_name: str = "knn", version: str = "1.0",):
+async def train(model_name: str = "pedido_sugerido", version: str = "1.0",):
     service = TrainingService()
     result  = service.run(
         model_name  = model_name,

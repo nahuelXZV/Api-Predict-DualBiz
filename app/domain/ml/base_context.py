@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from app.domain.dtos.training_dto import TrainResponseDTO
-from app.domain.ml.base_model import BaseMLModel
 
 @dataclass
 class BaseContext:
