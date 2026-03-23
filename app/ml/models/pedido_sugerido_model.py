@@ -5,7 +5,7 @@ from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.base_context import PredictContext
 from app.domain.ml.base_model import BaseMLModel
 from app.domain.ml.model_metadata import ModelMetadata
-from app.ml.predict.knn.pipeline import predict_knn_pipeline
+from app.ml.predict.pedido_sugerido.pipeline import predict_pedido_sugerido_pipeline
 
 
 class PedidoSugeridoModel(BaseMLModel):
@@ -29,7 +29,7 @@ class PedidoSugeridoModel(BaseMLModel):
             data=data,
         )
 
-        pipeline = predict_knn_pipeline()
+        pipeline = predict_pedido_sugerido_pipeline()
         ctx = pipeline.run(ctx)
         response = ctx.data_response
         return response
