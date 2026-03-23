@@ -1,5 +1,5 @@
 from app.domain.ml.base_pipeline import BasePipeline
-from app.ml.predict.knn.steps import (
+from app.ml.predict.pedido_sugerido.steps import (
     BuildCandidatesStep,
     BuildFeatureMatrixStep,
     FindNeighborsStep,
@@ -9,7 +9,7 @@ from app.ml.predict.knn.steps import (
 )
 
 
-def predict_knn_pipeline() -> BasePipeline:
+def predict_pedido_sugerido_pipeline() -> BasePipeline:
     pipeline = BasePipeline()
     pipeline.add_step(LoadModelStep())
     pipeline.add_step(ValidateClienteStep())
