@@ -17,16 +17,25 @@ class LoadModelStep(BaseStep[PredictContext]):
     def execute(self, ctx: PredictContext) -> PredictContext:
         art = ctx.model["artefactos"]
 
+        # Infraestructura compartida
         ctx.extra["kmeans"] = art["kmeans"]
         ctx.extra["scaler"] = art["scaler"]
         ctx.extra["knn_segment"] = art["knn_segment"]
         ctx.extra["perfil_pivot"] = art["perfil_pivot"]
-        ctx.extra["xgboost"] = art["xgboost"]
-        ctx.extra["encoder"] = art["encoder"]
-        ctx.extra["features"] = art["features"]
         ctx.extra["customer_profile"] = art["customer_profile"]
         ctx.extra["perfil_productos"] = art["perfil_productos"]
         ctx.extra["fecha_max"] = art["fecha_max"]
+
+        # Modelo 1: cantidad
+        ctx.extra["xgboost"] = art["xgboost"]
+        ctx.extra["encoder"] = art["encoder"]
+        ctx.extra["features"] = art["features"]
+
+        # Modelo 2: afinidad
+        ctx.extra["model_af"] = art["model_af"]
+        ctx.extra["encoder_af"] = art["encoder_af"]
+        ctx.extra["features_af"] = art["features_af"]
+
         return ctx
 
 
@@ -134,14 +143,6 @@ class FindNeighborsStep(BaseStep[PredictContext]):
         scaler = cast(StandardScaler, ctx.extra["scaler"])
         knn_segment = cast(dict, ctx.extra["knn_segment"])
         cliente_id = ctx.data.get("cliente_id")
-
-        fila_cliente = customer_profile[customer_profile["cliente_id"] == cliente_id]
-        segmento = int(fila_cliente["segmento"].iloc[0])
-        ctx.extra["segmento"] = segmento
-
-        seg_data = knn_segment[segmento]
-        knn_model = cast(NearestNeighbors, seg_data["model"])
-        clientes_en_seg = seg_data["clientes"]
         features_to_scale = [
             "cantidad_vendida",
             "promedio_historico",
@@ -149,25 +150,24 @@ class FindNeighborsStep(BaseStep[PredictContext]):
             "meses_activo",
         ]
 
-        # Posición del cliente dentro del segmento (mismo orden que en entrenamiento)
-        perfil_ordenado = customer_profile.set_index("cliente_id").loc[clientes_en_seg]
-        x_seg = scaler.transform(perfil_ordenado[features_to_scale])
+        fila = customer_profile[customer_profile["cliente_id"] == cliente_id]
+        segmento = int(fila["segmento"].iloc[0])
+        perfil_vector = scaler.transform(fila[features_to_scale])
 
-        idx_local = clientes_en_seg.index(cliente_id)
-        x_cliente = x_seg[idx_local].reshape(1, -1)
+        seg_data = knn_segment[segmento]
+        knn_model = cast(NearestNeighbors, seg_data["model"])
+        clientes_en_seg = seg_data["clientes"]
 
-        distancias, indices = knn_model.kneighbors(x_cliente)
+        distancias, indices = knn_model.kneighbors(perfil_vector)
 
-        # Excluir el primero (es el propio cliente) y convertir a IDs reales
-        vecinos_locales = indices[0][1:]
-        vecinos_dist = distancias[0][1:]
-
+        # Excluir índice 0 — siempre es el propio cliente
         vecinos_ids = [
-            clientes_en_seg[i] for i in vecinos_locales if i < len(clientes_en_seg)
+            clientes_en_seg[i] for i in indices[0][1:] if i < len(clientes_en_seg)
         ]
 
+        ctx.extra["segmento"] = segmento
         ctx.extra["vecinos_ids"] = vecinos_ids
-        ctx.extra["vecinos_dist"] = vecinos_dist.tolist()
+        ctx.extra["vecinos_dist"] = distancias[0][1:].tolist()
 
         print(f"Segmento: {segmento} | Vecinos encontrados: {len(vecinos_ids)}")
         return ctx
@@ -188,20 +188,18 @@ class BuildCandidatesStep(BaseStep[PredictContext]):
 
         # Productos de los vecinos
         perfil_vecinos = perfil_pivot.loc[perfil_pivot.index.isin(vecinos_ids)]
-        if not perfil_vecinos.empty:
-            prom_vecinos_serie = perfil_vecinos.mean(axis=0)
-        else:
-            prom_vecinos_serie = pd.Series(dtype=float)
-
+        prom_vecinos_serie = (
+            perfil_vecinos.mean(axis=0)
+            if not perfil_vecinos.empty
+            else pd.Series(dtype=float)
+        )
         productos_vecinos = prom_vecinos_serie[prom_vecinos_serie > 0].index.tolist()
-
-        # Unión de candidatos: propios + de vecinos
         todos_candidatos = list(set(productos_propios + productos_vecinos))
+        # todos_candidatos = productos_vecinos
 
         ctx.extra["productos_propios"] = productos_propios
         ctx.extra["prom_vecinos_serie"] = prom_vecinos_serie
         ctx.extra["todos_candidatos"] = todos_candidatos
-        ctx.extra["perfil_vecinos"] = perfil_vecinos
 
         print(
             f"Candidatos: {len(productos_propios)} propios | "
@@ -217,28 +215,27 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
         todos_candidatos = cast(list, ctx.extra["todos_candidatos"])
         prom_vecinos_serie = cast(pd.Series, ctx.extra["prom_vecinos_serie"])
         encoder = cast(OrdinalEncoder, ctx.extra["encoder"])
+        encoder_af = cast(OrdinalEncoder, ctx.extra["encoder_af"])
         fecha_max = ctx.extra["fecha_max"]
         segmento = ctx.extra["segmento"]
+        cliente_id = ctx.data.get("cliente_id")
+        mes_actual = fecha_max.month
 
-        # Contexto del cliente: última fila de cada producto propio
         historial_cliente = perfil_productos[
-            perfil_productos["cliente_id"] == ctx.data.get("cliente_id")
+            perfil_productos["cliente_id"] == cliente_id
         ]
-
-        # Contexto base del cliente (para productos nuevos sin historial propio)
-        if len(historial_cliente) > 0:
-            ctx_base = historial_cliente.iloc[-1]
-        else:
-            ctx_base = perfil_productos.iloc[-1]  # fallback a cualquier fila
+        ctx_base = historial_cliente.iloc[-1]
 
         filas = []
         for producto in todos_candidatos:
             hist_prod = historial_cliente[
                 historial_cliente["nombre_producto"] == producto
             ]
+            prod_info = perfil_productos[
+                perfil_productos["nombre_producto"] == producto
+            ]
 
             if len(hist_prod) > 0:
-                # Producto con historial propio: usar sus datos reales
                 ultima = hist_prod.sort_values("fecha_venta").iloc[-1]
                 promedio_historico = hist_prod["cantidad_vendida"].mean()
                 promedio_ultimas_3 = hist_prod["cantidad_vendida"].tail(3).mean()
@@ -251,39 +248,40 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
                 zona_id = ultima["zona_id"]
                 sucursal = ultima["sucursal"]
                 fuente = "historial_propio"
-            else:
-                # Producto nuevo para este cliente: usar contexto del cliente
-                # y promedio global del producto como referencia
-                prom_global = perfil_productos[
-                    perfil_productos["nombre_producto"] == producto
-                ]["cantidad_vendida"].mean()
-
-                promedio_historico = prom_global if pd.notna(prom_global) else 0.0
-                promedio_ultimas_3 = promedio_historico
-                dias_entre_compras = float(ctx_base["dias_entre_compras"])
-                dias_desde_ultima_compra = 999  # nunca lo ha comprado
-                marca = (
-                    perfil_productos[perfil_productos["nombre_producto"] == producto][
-                        "marca"
-                    ].iloc[0]
-                    if len(
-                        perfil_productos[
-                            perfil_productos["nombre_producto"] == producto
+                num_compras_producto = len(hist_prod)
+                meses_activo_producto = hist_prod["mes"].nunique()
+                prom_mes = hist_prod[hist_prod["mes"] == mes_actual][
+                    "cantidad_vendida"
+                ].mean()
+                prom_cantidad_mes = float(prom_mes) if pd.notna(prom_mes) else 0.0
+                umbral_anio_ant = fecha_max - pd.Timedelta(days=300)
+                compro_anio_ant = int(
+                    len(
+                        hist_prod[
+                            (hist_prod["mes"] == mes_actual)
+                            & (hist_prod["fecha_venta"] < umbral_anio_ant)
                         ]
                     )
                     > 0
+                )
+            else:
+                prom_global = (
+                    prod_info["cantidad_vendida"].mean() if len(prod_info) > 0 else 0.0
+                )
+                promedio_historico = (
+                    float(prom_global) if pd.notna(prom_global) else 0.0
+                )
+                promedio_ultimas_3 = promedio_historico
+                dias_entre_compras = float(ctx_base["dias_entre_compras"])
+                dias_desde_ultima_compra = 999
+                marca = (
+                    prod_info["marca"].iloc[0]
+                    if len(prod_info) > 0
                     else ctx_base["marca"]
                 )
                 linea_producto = (
-                    perfil_productos[perfil_productos["nombre_producto"] == producto][
-                        "linea_producto"
-                    ].iloc[0]
-                    if len(
-                        perfil_productos[
-                            perfil_productos["nombre_producto"] == producto
-                        ]
-                    )
-                    > 0
+                    prod_info["linea_producto"].iloc[0]
+                    if len(prod_info) > 0
                     else ctx_base["linea_producto"]
                 )
                 clasificacion_cliente = ctx_base["clasificacion_cliente"]
@@ -291,8 +289,17 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
                 zona_id = ctx_base["zona_id"]
                 sucursal = ctx_base["sucursal"]
                 fuente = "vecinos"
-
-            prom_vecinos = float(prom_vecinos_serie.get(producto, 0.0))
+                num_compras_producto = 0
+                meses_activo_producto = (
+                    int(prod_info["mes"].nunique()) if len(prod_info) > 0 else 0
+                )
+                prom_mes = (
+                    prod_info[prod_info["mes"] == mes_actual]["cantidad_vendida"].mean()
+                    if len(prod_info) > 0
+                    else np.nan
+                )
+                prom_cantidad_mes = float(prom_mes) if pd.notna(prom_mes) else 0.0
+                compro_anio_ant = 0
 
             filas.append(
                 {
@@ -310,14 +317,17 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
                     "dia_semana": int(ctx_base["dia_semana"]),
                     "mes": int(ctx_base["mes"]),
                     "segmento": segmento,
-                    "prom_vecinos": prom_vecinos,
-                    "_fuente": fuente,  # columna auxiliar, no entra al modelo
+                    "prom_vecinos": float(prom_vecinos_serie.get(producto, 0.0)),
+                    "num_compras_producto": num_compras_producto,
+                    "meses_activo_producto": meses_activo_producto,
+                    "prom_cantidad_mes": prom_cantidad_mes,
+                    "compro_este_mes_anio_ant": compro_anio_ant,
+                    "_fuente": fuente,
                 }
             )
 
         df_pred = pd.DataFrame(filas)
 
-        # Encodear categóricas con el mismo encoder del entrenamiento
         cat_features = [
             "nombre_producto",
             "marca",
@@ -325,14 +335,20 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
             "clasificacion_cliente",
             "sucursal",
         ]
-        df_pred[cat_features] = encoder.transform(
-            df_pred[cat_features].fillna("DESCONOCIDO")
+
+        df_cantidad = df_pred.copy()
+        df_cantidad[cat_features] = encoder.transform(
+            df_cantidad[cat_features].fillna("DESCONOCIDO")
         )
 
-        ctx.extra["df_pred"] = df_pred
-        ctx.extra["candidatos_raw"] = (
-            todos_candidatos  # nombres originales antes del encode
+        df_afinidad = df_pred.copy()
+        df_afinidad[cat_features] = encoder_af.transform(
+            df_afinidad[cat_features].fillna("DESCONOCIDO")
         )
+
+        ctx.extra["df_cantidad"] = df_cantidad
+        ctx.extra["df_afinidad"] = df_afinidad
+        ctx.extra["candidatos_raw"] = todos_candidatos
 
         print(f"Feature matrix lista: {len(df_pred)} productos candidatos")
         return ctx
@@ -343,36 +359,62 @@ class PredictStep(BaseStep[PredictContext]):
         cantidad_minima = ctx.extra.get("cantidad_minima", CANTIDAD_MINIMA)
         top_n = ctx.extra.get("top_n", TOP_N)
 
-        modelo = ctx.extra["xgboost"]
+        model_af = ctx.extra["model_af"]
+        model_xgb = ctx.extra["xgboost"]
         features = ctx.extra["features"]
-        df_pred = cast(pd.DataFrame, ctx.extra["df_pred"]).copy()
-        print(f"Prediciendo con {len(df_pred)} candidatos...")
-        print(df_pred[features].head())
-        print(df_pred.info())
+        features_af = ctx.extra["features_af"]
 
-        X = df_pred[features]
-        cantidades_pred = modelo.predict(X)
+        df_cantidad = cast(pd.DataFrame, ctx.extra["df_cantidad"]).copy()
+        df_afinidad = cast(pd.DataFrame, ctx.extra["df_afinidad"]).copy()
+        candidatos_raw = ctx.extra["candidatos_raw"]
 
-        # Reconstruir con nombres originales (antes del encode)
-        df_pred["nombre_producto"] = ctx.extra["candidatos_raw"]
-        df_pred["cantidad_sugerida"] = np.maximum(cantidades_pred, 0)
-        df_pred["cantidad_sugerida"] = df_pred["cantidad_sugerida"].round(2)
+        # Paso 1: score de afinidad para todos los candidatos
+        scores_af = np.clip(model_af.predict(df_afinidad[features_af]), 0, 1)
 
-        # Filtrar productos con cantidad significativa
-        df_result = df_pred[df_pred["cantidad_sugerida"] >= cantidad_minima].copy()
+        df_cantidad["_nombre_raw"] = (
+            candidatos_raw  # columna auxiliar, no entra al modelo
+        )
+        df_cantidad["score_afinidad"] = scores_af
+        df_cantidad["_fuente"] = df_afinidad["_fuente"].values
 
-        # Ordenar: primero los de historial propio, luego por cantidad descendente
-        df_result["origen_prediccion"] = (df_result["_fuente"] == "vecinos").astype(int)
-        print("productos antes de filtrar")
-        print(df_result.info())
-        print(df_result.head(20))
+        # Paso 2: top (top_n * 2) por afinidad
+        top_af = df_cantidad.nlargest(top_n * 2, "score_afinidad").copy()
+
+        # Paso 3: predecir cantidad — ahora nombre_producto sigue siendo el número encodeado
+        top_af["cantidad_sugerida"] = np.maximum(
+            model_xgb.predict(top_af[features]), 0
+        ).round(2)
+
+        # Paso 4: filtrar y ordenar
+        df_result = top_af[top_af["cantidad_sugerida"] >= cantidad_minima].copy()
+
+        df_result["_orden_fuente"] = (
+            df_result["_fuente"]
+            .map(
+                {
+                    "historial_propio": 0,
+                    "vecinos": 1,
+                }
+            )
+            .fillna(1)
+            .astype(int)
+        )
+
         df_result = df_result.sort_values(
-            ["cantidad_sugerida"], ascending=[False]
+            ["_orden_fuente", "score_afinidad"],
+            ascending=[True, False],
         ).head(top_n)
 
-        print(f"Predicción lista: {len(df_result)} productos sugeridos")
-        print(df_result[["nombre_producto", "cantidad_sugerida", "_fuente"]])
-        ctx.data_response = df_result[
-            ["nombre_producto", "cantidad_sugerida", "_fuente"]
-        ].copy()
+        ctx.data_response = (
+            df_result[
+                [
+                    "_nombre_raw",  # nombre legible
+                    "score_afinidad",
+                    "cantidad_sugerida",
+                    "_fuente",
+                ]
+            ]
+            .rename(columns={"_nombre_raw": "nombre_producto"})
+            .copy()
+        )
         return ctx

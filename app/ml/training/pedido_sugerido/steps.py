@@ -1,6 +1,7 @@
 from typing import cast
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
@@ -22,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parents[4]
 DATA_PATH = BASE_DIR / "storage" / "data" / "consulta_base.csv"
 MODEL_PATH_BASE = BASE_DIR / "storage" / "models"
 
-XGB_FEATURES = [
+XGB_CANTIDAD_FEATURES = [
     "nombre_producto",  # categorica → OrdinalEncoder
     "marca",  # categorica
     "linea_producto",  # categorica
@@ -40,7 +41,31 @@ XGB_FEATURES = [
     "prom_vecinos",  # cuánto compran clientes similares este producto
 ]
 
-XGB_TARGET = "cantidad_vendida"
+XGB_CANTIDAD_TARGET = "cantidad_vendida"
+
+XGB_AFINIDAD_FEATURES = [
+    "nombre_producto",
+    "marca",
+    "linea_producto",
+    "clasificacion_cliente",
+    "sucursal",
+    "ruta_id",
+    "zona_id",
+    "promedio_historico",
+    "promedio_ultimas_3",
+    "dias_entre_compras",
+    "dias_desde_ultima_compra",
+    "dia_semana",
+    "mes",
+    "segmento",
+    "prom_vecinos",
+    "num_compras_producto",  # cuantas veces compro este producto
+    "meses_activo_producto",  # en cuantos meses distintos lo compro
+    "prom_cantidad_mes",  # promedio historico en este mes especifico
+    "compro_este_mes_anio_ant",  # lo compro en este mes el año pasado?
+]
+
+XGB_AFINIDAD_TARGET = "score_afinidad"
 
 
 class LoadDataStep(BaseStep[TrainingContext]):
@@ -229,7 +254,7 @@ class KnnStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class PrepareDataXGBoostStep(BaseStep[TrainingContext]):
+class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
             ctx.errors.append("PrepareDataXGBoostStep: clean_data es None.")
@@ -336,15 +361,15 @@ class PrepareDataXGBoostStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class TrainXGBoostStep(BaseStep[TrainingContext]):
+class TrainCantidadStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         data_xgb_df = cast(pd.DataFrame, ctx.extra.get("data_xgb_df")).copy()
         if data_xgb_df is None:
             ctx.errors.append("TrainXGBoostStep: data_xgb_df es None.")
             return ctx
 
-        X = data_xgb_df[XGB_FEATURES]
-        y = data_xgb_df[XGB_TARGET].fillna(0)
+        X = data_xgb_df[XGB_CANTIDAD_FEATURES]
+        y = data_xgb_df[XGB_CANTIDAD_TARGET].fillna(0)
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
@@ -373,8 +398,218 @@ class TrainXGBoostStep(BaseStep[TrainingContext]):
         print(f"XGBoost entrenado | MAE en test: {mae:.2f} unidades")
 
         ctx.extra["xgboost_model"] = model
-        ctx.extra["xgb_features"] = XGB_FEATURES
+        ctx.extra["xgb_features"] = XGB_CANTIDAD_FEATURES
         ctx.extra["mae"] = mae
+        return ctx
+
+
+class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
+    def execute(self, ctx: TrainingContext) -> TrainingContext:
+        if ctx.clean_data is None:
+            ctx.errors.append("PrepareDataAfinidadStep: clean_data es None.")
+            return ctx
+
+        df = ctx.clean_data.copy()
+        customer_profile = cast(pd.DataFrame, ctx.extra["customer_profile"]).copy()
+        knn_segment = cast(dict, ctx.extra["knn_segment"])
+        scaler = cast(StandardScaler, ctx.extra["scaler"])
+        features_to_scale = ctx.extra["features_to_scale"]
+        fecha_max = cast(pd.Timestamp, ctx.extra["fecha_max"])
+        mes_actual = fecha_max.month
+
+        # ── Base: una fila por cliente-producto ───────────────────────────
+        data_af = (
+            df.groupby(["cliente_id", "nombre_producto"])
+            .agg(
+                promedio_historico=("promedio_historico", "mean"),
+                promedio_ultimas_3=("promedio_ultimas_3", "last"),
+                dias_entre_compras=("dias_entre_compras", "mean"),
+                dias_desde_ultima_compra=("dias_desde_ultima_compra", "mean"),
+                dia_semana=("dia_semana", "first"),
+                mes=("mes", "first"),
+                marca=("marca", "first"),
+                linea_producto=("linea_producto", "first"),
+                clasificacion_cliente=("clasificacion_cliente", "first"),
+                ruta_id=("ruta_id", "first"),
+                zona_id=("zona_id", "first"),
+                sucursal=("sucursal", "first"),
+                num_compras_producto=("cantidad_vendida", "count"),
+                meses_activo_producto=("mes", "nunique"),
+            )
+            .reset_index()
+        )
+
+        # ── Feature: promedio de cantidad en el mes actual ─────────────────
+        prom_por_mes = (
+            df.groupby(["cliente_id", "nombre_producto", "mes"])["cantidad_vendida"]
+            .mean()
+            .reset_index(name="prom_cantidad_mes")
+        )
+        prom_mes_actual = prom_por_mes[prom_por_mes["mes"] == mes_actual][
+            ["cliente_id", "nombre_producto", "prom_cantidad_mes"]
+        ]
+        data_af = data_af.merge(
+            prom_mes_actual, on=["cliente_id", "nombre_producto"], how="left"
+        )
+        data_af["prom_cantidad_mes"] = data_af["prom_cantidad_mes"].fillna(0)
+
+        # ── Feature: compro en este mes el año anterior? ───────────────────
+        umbral_anio_ant = fecha_max - pd.Timedelta(days=300)
+        compro_anio_ant = (
+            df[(df["mes"] == mes_actual) & (df["fecha_venta"] < umbral_anio_ant)]
+            .groupby(["cliente_id", "nombre_producto"])
+            .size()
+            .reset_index(name="_cnt")
+            .assign(compro_este_mes_anio_ant=1)[
+                ["cliente_id", "nombre_producto", "compro_este_mes_anio_ant"]
+            ]
+        )
+        data_af = data_af.merge(
+            compro_anio_ant, on=["cliente_id", "nombre_producto"], how="left"
+        )
+        data_af["compro_este_mes_anio_ant"] = (
+            data_af["compro_este_mes_anio_ant"].fillna(0).astype(int)
+        )
+
+        # ── Mapear segmento ───────────────────────────────────────────────
+        seg_map = customer_profile.set_index("cliente_id")["segmento"]
+        data_af["segmento"] = data_af["cliente_id"].map(seg_map).fillna(-1).astype(int)
+
+        # ── Calcular prom_vecinos y construir el target score_afinidad ────
+        #
+        # Para cada cliente:
+        #   1. Encontrar sus vecinos KNN
+        #   2. Ver cuánto compran esos vecinos por producto → prom_vecinos
+        #   3. Normalizar: score = prom_vecinos / max(prom_vecinos del cliente)
+        #
+        # La normalización es POR CLIENTE para que sea comparable entre
+        # clientes grandes y pequeños.
+        print("Calculando score_afinidad por segmento...")
+
+        prom_vecinos_map: dict = {}  # (cliente_id, producto) → prom_vecinos raw
+
+        for seg_id, seg_data in knn_segment.items():
+            clientes_en_seg = seg_data["clientes"]
+            perfil_seg = cast(pd.DataFrame, seg_data["perfil"])
+            knn_model = cast(NearestNeighbors, seg_data["model"])
+
+            perfil_ordenado = customer_profile.set_index("cliente_id").loc[
+                clientes_en_seg
+            ]
+            x_seg = scaler.transform(perfil_ordenado[features_to_scale])
+            _, indices_matrix = knn_model.kneighbors(x_seg)
+
+            for local_idx, cliente_id in enumerate(clientes_en_seg):
+                vecino_idxs = indices_matrix[local_idx][1:]
+                vecinos_ids = [
+                    clientes_en_seg[i] for i in vecino_idxs if i < len(clientes_en_seg)
+                ]
+                if len(vecinos_ids) == 0:
+                    continue
+
+                perfil_vecinos = perfil_seg.loc[perfil_seg.index.isin(vecinos_ids)]
+                if perfil_vecinos.empty:
+                    continue
+
+                prom_por_producto = perfil_vecinos.mean(axis=0)
+                for prod, prom in prom_por_producto.items():
+                    prom_vecinos_map[(cliente_id, prod)] = float(prom)
+
+        data_af["prom_vecinos"] = data_af.apply(
+            lambda r: prom_vecinos_map.get(
+                (r["cliente_id"], r["nombre_producto"]), 0.0
+            ),
+            axis=1,
+        )
+
+        # Normalizar por cliente: score = prom_vecinos / max(prom_vecinos del cliente)
+        max_por_cliente = (
+            data_af.groupby("cliente_id")["prom_vecinos"]
+            .max()
+            .rename("max_prom_vecinos")
+        )
+        data_af = data_af.join(max_por_cliente, on="cliente_id")
+
+        # Evitar división por cero para clientes sin vecinos con compras
+        data_af["score_afinidad"] = np.where(
+            data_af["max_prom_vecinos"] > 0,
+            data_af["prom_vecinos"] / data_af["max_prom_vecinos"],
+            0.0,
+        )
+        data_af = data_af.drop(columns=["max_prom_vecinos"])
+
+        print(
+            f"Score afinidad calculado | "
+            f"media: {data_af['score_afinidad'].mean():.3f} | "
+            f"productos con score > 0.5: "
+            f"{(data_af['score_afinidad'] > 0.5).sum():,}"
+        )
+
+        # ── Encodear categóricas ──────────────────────────────────────────
+        cat_features = [
+            "nombre_producto",
+            "marca",
+            "linea_producto",
+            "clasificacion_cliente",
+            "sucursal",
+        ]
+        enc_af = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        data_af[cat_features] = enc_af.fit_transform(
+            data_af[cat_features].fillna("DESCONOCIDO")
+        )
+
+        ctx.extra["data_af"] = data_af
+        ctx.extra["encoder_af"] = enc_af
+        print(f"Dataset afinidad listo: {len(data_af):,} filas")
+        print(data_af.head())
+        print(data_af.info())
+        return ctx
+
+
+class TrainAfinidadStep(BaseStep[TrainingContext]):
+    def execute(self, ctx: TrainingContext) -> TrainingContext:
+        data_af = cast(pd.DataFrame, ctx.extra.get("data_af"))
+        if data_af is None:
+            ctx.errors.append(
+                "TrainAfinidadStep: data_af es None, "
+                "PrepareDataAfinidadStep no se ejecutó."
+            )
+            return ctx
+
+        data_af = data_af.copy()
+
+        X = data_af[XGB_AFINIDAD_FEATURES]
+        y = data_af[XGB_AFINIDAD_TARGET]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
+        model_af = xgb.XGBRegressor(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            verbosity=0,
+            early_stopping_rounds=20,
+        )
+
+        model_af.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_test, y_test)],
+            verbose=False,
+        )
+
+        y_pred = np.clip(model_af.predict(X_test), 0, 1)
+        mae = mean_absolute_error(y_test, y_pred)
+        print(f"Modelo afinidad entrenado | MAE score: {mae:.4f}")
+
+        ctx.extra["model_af"] = model_af
+        ctx.extra["af_features"] = XGB_AFINIDAD_FEATURES
+        ctx.extra["mae_af"] = mae
         return ctx
 
 
@@ -385,17 +620,24 @@ class SaveModelStep(BaseStep[TrainingContext]):
             return ctx
 
         artefactos = {
+            # Infraestructura compartida
             "kmeans": ctx.extra["kmeans_model"],
             "scaler": ctx.extra["scaler"],
             "knn_segment": ctx.extra["knn_segment"],
             "perfil_pivot": ctx.extra["perfil_pivot"],
-            "xgboost": ctx.extra["xgboost_model"],
-            "encoder": ctx.extra["encoder"],
-            "features": ctx.extra["xgb_features"],
             "customer_profile": ctx.extra["customer_profile"],
             "perfil_productos": ctx.clean_data,
             "fecha_max": ctx.extra["fecha_max"],
+            # Modelo 1: cantidad (Regressor)
+            "xgboost": ctx.extra["xgboost_model"],
+            "encoder": ctx.extra["encoder"],
+            "features": ctx.extra["xgb_features"],
             "mae": ctx.extra["mae"],
+            # Modelo 2: afinidad (Regressor)
+            "model_af": ctx.extra["model_af"],
+            "encoder_af": ctx.extra["encoder_af"],
+            "features_af": ctx.extra["af_features"],
+            "mae_af": ctx.extra["mae_af"],
         }
 
         MODEL_PATH_BASE.mkdir(parents=True, exist_ok=True)
@@ -404,7 +646,8 @@ class SaveModelStep(BaseStep[TrainingContext]):
 
         ctx.extra["path_model"] = path_model
         print(f"Modelo guardado en: {path_model}")
-        print(f"MAE final: {ctx.extra['mae']:.2f} unidades")
+        print(f"  MAE cantidad:  {ctx.extra['mae']:.2f} unidades")
+        print(f"  MAE afinidad:  {ctx.extra['mae_af']:.4f} score")
         return ctx
 
 
