@@ -18,3 +18,5 @@ def predict_pedido_sugerido_pipeline() -> BasePipeline:
     pipeline.add_step(BuildFeatureMatrixStep())
     pipeline.add_step(PredictStep())
     return pipeline
+
+
