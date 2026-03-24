@@ -4,11 +4,13 @@ from app.ml.training.pedido_sugerido.steps import (
     CleanDataStep,
     KnnStep,
     LoadDataStep,
-    PrepareDataXGBoostStep,
+    PrepareDataAfinidadStep,
+    PrepareDataXGCantidadStep,
     RegistryModelStep,
     SaveModelStep,
     KMeansStep,
-    TrainXGBoostStep,
+    TrainAfinidadStep,
+    TrainCantidadStep,
 )
 
 
@@ -20,8 +22,10 @@ def build_pedido_sugerido_pipeline() -> BasePipeline:
     pipeline.add_step(AddDerivedFeatureStep())
     pipeline.add_step(KMeansStep())
     pipeline.add_step(KnnStep())
-    pipeline.add_step(PrepareDataXGBoostStep())
-    pipeline.add_step(TrainXGBoostStep())
+    pipeline.add_step(PrepareDataXGCantidadStep())
+    pipeline.add_step(TrainCantidadStep())
+    pipeline.add_step(PrepareDataAfinidadStep())
+    pipeline.add_step(TrainAfinidadStep())
     pipeline.add_step(SaveModelStep())
     pipeline.add_step(RegistryModelStep())
 
