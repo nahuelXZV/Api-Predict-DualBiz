@@ -149,7 +149,6 @@ class CleanDataStep(BaseStep[TrainingContext]):
 
         antes = len(df)
         df = df.dropna(subset=["cliente_id", "nombre_producto", "cantidad_vendida"])
-        df = df[df["cantidad_vendida"] > 0]
         print(f"Limpieza: {antes - len(df):,} filas eliminadas → {len(df):,} útiles")
 
         ctx.clean_data = df
