@@ -67,6 +67,51 @@ XGB_AFINIDAD_FEATURES = [
 
 XGB_AFINIDAD_TARGET = "score_afinidad"
 
+CAT_FEATURES = [
+    "nombre_producto",
+    "marca",
+    "linea_producto",
+    "clasificacion_cliente",
+    "sucursal",
+]
+
+
+def _calcular_prom_vecinos_map(
+    knn_segment: dict,
+    customer_profile: pd.DataFrame,
+    scaler,
+    features_to_scale: list,
+) -> dict:
+    """Devuelve {(cliente_id, producto): prom_cantidad_vecinos}."""
+    prom_vecinos_map: dict = {}
+
+    for seg_data in knn_segment.values():
+        clientes_en_seg = seg_data["clientes"]
+        perfil_seg = cast(pd.DataFrame, seg_data["perfil"])
+        knn_model = cast(NearestNeighbors, seg_data["model"])
+
+        perfil_ordenado = customer_profile.set_index("cliente_id").loc[clientes_en_seg]
+        x_seg = scaler.transform(perfil_ordenado[features_to_scale])
+        _, indices_matrix = knn_model.kneighbors(x_seg)
+
+        for local_idx, cliente_id in enumerate(clientes_en_seg):
+            vecinos_ids = [
+                clientes_en_seg[i]
+                for i in indices_matrix[local_idx][1:]
+                if i < len(clientes_en_seg)
+            ]
+            if not vecinos_ids:
+                continue
+
+            perfil_vecinos = perfil_seg.loc[perfil_seg.index.isin(vecinos_ids)]
+            if perfil_vecinos.empty:
+                continue
+
+            for prod, prom in perfil_vecinos.mean(axis=0).items():
+                prom_vecinos_map[(cliente_id, prod)] = float(prom)
+
+    return prom_vecinos_map
+
 
 class LoadDataStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -293,44 +338,9 @@ class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
         )
 
         print("Calculando prom_vecinos por segmento (vectorizado)...")
-        prom_vecinos_map: dict = {}
-
-        for seg_id, seg_data in knn_segment.items():
-            clientes_en_seg = seg_data["clientes"]
-            perfil_seg = cast(pd.DataFrame, seg_data["perfil"])
-            knn_model = cast(NearestNeighbors, seg_data["model"])
-
-            # Perfiles de comportamiento de clientes en este segmento
-            perfil_ordenado = customer_profile_df.set_index("cliente_id").loc[
-                clientes_en_seg
-            ]
-            x_seg = scaler.transform(perfil_ordenado[features_to_scale])
-
-            # Vecinos para todos los clientes del segmento de una sola vez
-            _, indices_matrix = knn_model.kneighbors(x_seg)  # shape: (n_clientes, k)
-
-            for local_idx, cliente_id in enumerate(clientes_en_seg):
-                # índices de vecinos (excluimos el primero: es el propio cliente)
-                vecino_local_idxs = indices_matrix[local_idx][1:]
-                vecinos_ids = [
-                    clientes_en_seg[i]
-                    for i in vecino_local_idxs
-                    if i < len(clientes_en_seg)
-                ]
-
-                if len(vecinos_ids) == 0:
-                    continue
-
-                # Promedio de cantidad que esos vecinos compran por producto
-                perfil_vecinos = perfil_seg.loc[perfil_seg.index.isin(vecinos_ids)]
-                if perfil_vecinos.empty:
-                    continue
-
-                prom_por_producto = perfil_vecinos.mean(axis=0)
-
-                for prod, prom in prom_por_producto.items():
-                    prom_vecinos_map[(cliente_id, prod)] = float(prom)
-
+        prom_vecinos_map = _calcular_prom_vecinos_map(
+            knn_segment, customer_profile_df, scaler, features_to_scale
+        )
         data_xgb_df["prom_vecinos"] = data_xgb_df.apply(
             lambda r: prom_vecinos_map.get(
                 (r["cliente_id"], r["nombre_producto"]), 0.0
@@ -342,21 +352,7 @@ class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
             f"{(data_xgb_df['prom_vecinos'] > 0).mean() * 100:.1f}% de filas"
         )
 
-        # ── Encodear variables categóricas ───────────────────────────────
-        cat_features = [
-            "nombre_producto",
-            "marca",
-            "linea_producto",
-            "clasificacion_cliente",
-            "sucursal",
-        ]
-        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-        data_xgb_df[cat_features] = enc.fit_transform(
-            data_xgb_df[cat_features].fillna("DESCONOCIDO")
-        )
-
         ctx.extra["data_xgb_df"] = data_xgb_df
-        ctx.extra["encoder"] = enc
         print(f"Dataset XGBoost listo: {len(data_xgb_df):,} filas")
         return ctx
 
@@ -374,6 +370,16 @@ class TrainCantidadStep(BaseStep[TrainingContext]):
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
+
+        # Encodear DESPUÉS del split para evitar data leakage
+        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        X_train = X_train.copy()
+        X_test = X_test.copy()
+        X_train[CAT_FEATURES] = enc.fit_transform(
+            X_train[CAT_FEATURES].fillna("DESCONOCIDO")
+        )
+        X_test[CAT_FEATURES] = enc.transform(X_test[CAT_FEATURES].fillna("DESCONOCIDO"))
+        ctx.extra["encoder"] = enc
 
         # XGBRegressor: predice CUÁNTO comprar, no solo si compra o no
         model = xgb.XGBRegressor(
@@ -485,36 +491,9 @@ class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
         # La normalización es POR CLIENTE para que sea comparable entre
         # clientes grandes y pequeños.
         print("Calculando score_afinidad por segmento...")
-
-        prom_vecinos_map: dict = {}  # (cliente_id, producto) → prom_vecinos raw
-
-        for seg_id, seg_data in knn_segment.items():
-            clientes_en_seg = seg_data["clientes"]
-            perfil_seg = cast(pd.DataFrame, seg_data["perfil"])
-            knn_model = cast(NearestNeighbors, seg_data["model"])
-
-            perfil_ordenado = customer_profile.set_index("cliente_id").loc[
-                clientes_en_seg
-            ]
-            x_seg = scaler.transform(perfil_ordenado[features_to_scale])
-            _, indices_matrix = knn_model.kneighbors(x_seg)
-
-            for local_idx, cliente_id in enumerate(clientes_en_seg):
-                vecino_idxs = indices_matrix[local_idx][1:]
-                vecinos_ids = [
-                    clientes_en_seg[i] for i in vecino_idxs if i < len(clientes_en_seg)
-                ]
-                if len(vecinos_ids) == 0:
-                    continue
-
-                perfil_vecinos = perfil_seg.loc[perfil_seg.index.isin(vecinos_ids)]
-                if perfil_vecinos.empty:
-                    continue
-
-                prom_por_producto = perfil_vecinos.mean(axis=0)
-                for prod, prom in prom_por_producto.items():
-                    prom_vecinos_map[(cliente_id, prod)] = float(prom)
-
+        prom_vecinos_map = _calcular_prom_vecinos_map(
+            knn_segment, customer_profile, scaler, features_to_scale
+        )
         data_af["prom_vecinos"] = data_af.apply(
             lambda r: prom_vecinos_map.get(
                 (r["cliente_id"], r["nombre_producto"]), 0.0
@@ -545,21 +524,7 @@ class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
             f"{(data_af['score_afinidad'] > 0.5).sum():,}"
         )
 
-        # ── Encodear categóricas ──────────────────────────────────────────
-        cat_features = [
-            "nombre_producto",
-            "marca",
-            "linea_producto",
-            "clasificacion_cliente",
-            "sucursal",
-        ]
-        enc_af = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-        data_af[cat_features] = enc_af.fit_transform(
-            data_af[cat_features].fillna("DESCONOCIDO")
-        )
-
         ctx.extra["data_af"] = data_af
-        ctx.extra["encoder_af"] = enc_af
         print(f"Dataset afinidad listo: {len(data_af):,} filas")
         print(data_af.head())
         print(data_af.info())
@@ -584,6 +549,18 @@ class TrainAfinidadStep(BaseStep[TrainingContext]):
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
+
+        # Encodear DESPUÉS del split para evitar data leakage
+        enc_af = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        X_train = X_train.copy()
+        X_test = X_test.copy()
+        X_train[CAT_FEATURES] = enc_af.fit_transform(
+            X_train[CAT_FEATURES].fillna("DESCONOCIDO")
+        )
+        X_test[CAT_FEATURES] = enc_af.transform(
+            X_test[CAT_FEATURES].fillna("DESCONOCIDO")
+        )
+        ctx.extra["encoder_af"] = enc_af
 
         model_af = xgb.XGBRegressor(
             n_estimators=300,
