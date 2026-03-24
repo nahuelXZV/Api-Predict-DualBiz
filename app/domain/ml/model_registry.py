@@ -3,19 +3,28 @@ from __future__ import annotations
 import threading
 from typing import Iterator
 
-from app.domain.core.exceptions import ModelAlreadyExistsError, ModelNotFoundError, ModelNotReadyError
+from app.domain.core.exceptions import (
+    ModelAlreadyExistsError,
+    ModelNotFoundError,
+    ModelNotReadyError,
+)
 from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
 from app.domain.ml.base_model import BaseMLModel
 from app.domain.core.logging import logger
 
+
 class ModelRegistry:
     def __init__(self) -> None:
         self._models: dict[str, BaseMLModel] = {}
-        self._lock   = threading.Lock()
-        
-    def register(self, name: str, model: BaseMLModel, * ,allow_override: bool = True) -> None:
+        self._lock = threading.Lock()
+
+    def register(
+        self, name: str, model: BaseMLModel, *, allow_override: bool = True
+    ) -> None:
         if not model.is_loaded:
-            raise ValueError(f"No se puede registrar '{name}': ""el modelo no fue cargado (llamá model.load() antes).")
+            raise ValueError(
+                f"No se puede registrar '{name}': el modelo no fue cargado..."
+            )
 
         with self._lock:
             if not allow_override and name in self._models:
@@ -28,10 +37,10 @@ class ModelRegistry:
 
         logger.info(
             "model_registered",
-            name        = name,
-            version     = model.version,
-            replaced    = previous_version,
-            loaded_at   = model.metadata.loaded_at.isoformat(),
+            name=name,
+            version=model.version,
+            replaced=previous_version,
+            loaded_at=model.metadata.loaded_at.isoformat(),
         )
 
     def unload(self, name: str) -> None:
@@ -70,14 +79,12 @@ class ModelRegistry:
         with self._lock:
             snapshot = list(self._models.items())
 
-        return [
-            model.metadata.to_dto() 
-            for name, model in snapshot
-        ]
+        return [model.metadata.to_dto() for name, model in snapshot]
 
     def __iter__(self) -> Iterator[tuple[str, BaseMLModel]]:
         with self._lock:
             items = list(self._models.items())
         return iter(items)
+
 
 model_registry = ModelRegistry()
