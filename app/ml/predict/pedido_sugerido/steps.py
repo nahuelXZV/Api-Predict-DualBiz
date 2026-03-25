@@ -59,84 +59,6 @@ class ValidateClienteStep(BaseStep[PredictContext]):
         return ctx
 
 
-class ResolveClientProfileStep(BaseStep[PredictContext]):
-    def execute(self, ctx: PredictContext) -> PredictContext:
-        customer_profile = cast(pd.DataFrame, ctx.extra["customer_profile"])
-        perfil_productos = cast(pd.DataFrame, ctx.extra["perfil_productos"])
-        scaler = cast(StandardScaler, ctx.extra["scaler"])
-        kmeans = ctx.extra["kmeans"]
-        cliente_id = ctx.data.get("cliente_id")
-        cliente_es_nuevo = ctx.extra["cliente_es_nuevo"]
-        features_to_scale = [
-            "cantidad_vendida",
-            "promedio_historico",
-            "dias_entre_compras",
-            "meses_activo",
-        ]
-
-        if not cliente_es_nuevo:
-            # ── Cliente existente: perfil real ────────────────────────────
-            fila = customer_profile[customer_profile["cliente_id"] == cliente_id]
-            segmento = int(fila["segmento"].iloc[0])
-            perfil_vector = scaler.transform(fila[features_to_scale])
-
-            ctx.extra["segmento"] = segmento
-            ctx.extra["perfil_vector"] = perfil_vector
-            print(f"Perfil resuelto (existente) → segmento {segmento}")
-            return ctx
-
-        # ── Cliente nuevo: construir perfil sintético ─────────────────────
-        zona_id = ctx.data.get("zona_id")
-        ruta_id = ctx.data.get("ruta_id")
-        clasif = ctx.data.get("clasificacion_cliente")
-
-        # Nivel 1: filtro completo zona + ruta + clasificación
-        mascara = pd.Series(
-            [True] * len(perfil_productos), index=perfil_productos.index
-        )
-        if zona_id is not None and "zona_id" in perfil_productos.columns:
-            mascara &= perfil_productos["zona_id"] == zona_id
-        if ruta_id is not None and "ruta_id" in perfil_productos.columns:
-            mascara &= perfil_productos["ruta_id"] == ruta_id
-        if clasif is not None and "clasificacion_cliente" in perfil_productos.columns:
-            mascara &= perfil_productos["clasificacion_cliente"] == clasif
-
-        clientes_ctx = perfil_productos.loc[mascara, "cliente_id"].unique()
-
-        # Nivel 2: relajar a solo clasificación
-        if len(clientes_ctx) == 0 and clasif is not None:
-            # mascara_relajada = perfil_productos["clasificacion_cliente"] == clasif
-            # clientes_ctx     = perfil_productos.loc[
-            #     mascara_relajada, "cliente_id"
-            # ].unique()
-            print(f"Fallback nivel 2: solo clasificacion_cliente='{clasif}'")
-
-        perfil_similares = customer_profile[
-            customer_profile["cliente_id"].isin(clientes_ctx)
-        ]
-
-        if len(perfil_similares) > 0:
-            # Perfil sintético = promedio de clientes similares
-            perfil_sintetico = perfil_similares[features_to_scale].mean()
-            x_sintetico = scaler.transform(
-                pd.DataFrame([perfil_sintetico], columns=features_to_scale)
-            )
-            segmento = int(kmeans.predict(x_sintetico)[0])
-            print(
-                f"Perfil sintético construido con {len(perfil_similares)} clientes "
-                f"similares → segmento {segmento}"
-            )
-        else:
-            # Nivel 3: segmento mayoritario como último recurso
-            segmento = int(customer_profile["segmento"].value_counts().idxmax())
-            x_sintetico = kmeans.cluster_centers_[[segmento]]
-            print(f"Fallback nivel 3: sin contexto → segmento mayoritario {segmento}")
-
-        ctx.extra["segmento"] = segmento
-        ctx.extra["perfil_vector"] = x_sintetico
-        return ctx
-
-
 class FindNeighborsStep(BaseStep[PredictContext]):
     def execute(self, ctx: PredictContext) -> PredictContext:
         customer_profile = cast(pd.DataFrame, ctx.extra["customer_profile"])
@@ -224,7 +146,7 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
         historial_cliente = perfil_productos[
             perfil_productos["cliente_id"] == cliente_id
         ]
-        ctx_base = historial_cliente.iloc[-1]
+        ctx_base = historial_cliente.sort_values("fecha_venta").iloc[-1]
 
         filas = []
         for producto in todos_candidatos:
@@ -254,7 +176,7 @@ class BuildFeatureMatrixStep(BaseStep[PredictContext]):
                     "cantidad_vendida"
                 ].mean()
                 prom_cantidad_mes = float(prom_mes) if pd.notna(prom_mes) else 0.0
-                umbral_anio_ant = fecha_max - pd.Timedelta(days=300)
+                umbral_anio_ant = fecha_max - pd.Timedelta(days=365)
                 compro_anio_ant = int(
                     len(
                         hist_prod[
