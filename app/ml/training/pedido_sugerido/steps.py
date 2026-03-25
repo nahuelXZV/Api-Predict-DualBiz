@@ -4,12 +4,11 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
 from pathlib import Path
 
 from sklearn.cluster import KMeans
-from sklearn.discriminant_analysis import StandardScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import OrdinalEncoder
 
@@ -111,6 +110,37 @@ def _calcular_prom_vecinos_map(
                 prom_vecinos_map[(cliente_id, prod)] = float(prom)
 
     return prom_vecinos_map
+
+
+def evaluar_afinidad_ranking(data_af_test, y_pred_af, k_values=[5, 10, 20]):
+    """
+    data_af_test : DataFrame del test set con cliente_id, nombre_producto
+    y_pred_af    : array de scores predichos (mismo orden que data_af_test)
+    """
+    df = data_af_test[["cliente_id", "nombre_producto"]].copy()
+    df["score_pred"] = y_pred_af
+    # Ground truth: el cliente compró este producto en el período test
+    # score_afinidad > 0 significa que sus vecinos lo compraron → proxy de "relevante"
+    df["relevante"] = (data_af_test["score_afinidad"] > 0).astype(int)
+
+    resultados = {f"precision@{k}": [] for k in k_values}
+    resultados.update({f"recall@{k}": [] for k in k_values})
+    resultados.update({f"hit_rate@{k}": [] for k in k_values})
+
+    for cliente_id, grupo in df.groupby("cliente_id"):
+        grupo_sorted = grupo.sort_values("score_pred", ascending=False)
+        total_relevantes = grupo["relevante"].sum()
+        if total_relevantes == 0:
+            continue
+
+        for k in k_values:
+            top_k = grupo_sorted.head(k)
+            hits = top_k["relevante"].sum()
+            resultados[f"precision@{k}"].append(hits / k)
+            resultados[f"recall@{k}"].append(hits / total_relevantes)
+            resultados[f"hit_rate@{k}"].append(int(hits > 0))
+
+    return {k: round(np.mean(v), 4) for k, v in resultados.items()}
 
 
 class LoadDataStep(BaseStep[TrainingContext]):
@@ -215,10 +245,6 @@ class KMeansStep(BaseStep[TrainingContext]):
             .fillna(0)
         )
 
-        print("Perfil de clientes antes de segmentar:")
-        print(customer_profile_df.head())
-        print(customer_profile_df.info())
-
         features_to_scale = [
             "cantidad_vendida",
             "promedio_historico",
@@ -241,7 +267,6 @@ class KMeansStep(BaseStep[TrainingContext]):
         ctx.extra["x_scaled"] = x_km
 
         print("Datos Segmentados:")
-        print(customer_profile_df.head())
         print(customer_profile_df.info())
         return ctx
 
@@ -327,6 +352,7 @@ class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
                 ruta_id=("ruta_id", "first"),
                 zona_id=("zona_id", "first"),
                 sucursal=("sucursal", "first"),
+                fecha_venta=("fecha_venta", "max"),
             )
             .reset_index()
         )
@@ -336,7 +362,6 @@ class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
             data_xgb_df["cliente_id"].map(seg_map).fillna(-1).astype(int)
         )
 
-        print("Calculando prom_vecinos por segmento (vectorizado)...")
         prom_vecinos_map = _calcular_prom_vecinos_map(
             knn_segment, customer_profile_df, scaler, features_to_scale
         )
@@ -352,33 +377,37 @@ class PrepareDataXGCantidadStep(BaseStep[TrainingContext]):
         )
 
         ctx.extra["data_xgb_df"] = data_xgb_df
-        print(f"Dataset XGBoost listo: {len(data_xgb_df):,} filas")
         return ctx
 
 
 class TrainCantidadStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        data_xgb_df = cast(pd.DataFrame, ctx.extra.get("data_xgb_df")).copy()
+        data_xgb_df = ctx.extra.get("data_xgb_df")
         if data_xgb_df is None:
-            ctx.errors.append("TrainXGBoostStep: data_xgb_df es None.")
+            ctx.errors.append("TrainCantidadStep: data_xgb_df es None.")
             return ctx
 
-        X = data_xgb_df[XGB_CANTIDAD_FEATURES]
-        y = data_xgb_df[XGB_CANTIDAD_TARGET].fillna(0)
+        data_xgb_df = data_xgb_df.copy()
+        data_xgb_df = data_xgb_df.sort_values("fecha_venta")
+        cutoff_date = data_xgb_df["fecha_venta"].quantile(0.8)
+        train = data_xgb_df[data_xgb_df["fecha_venta"] <= cutoff_date]
+        test = data_xgb_df[data_xgb_df["fecha_venta"] > cutoff_date]
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        X_train = train[XGB_CANTIDAD_FEATURES]
+        y_train = train[XGB_CANTIDAD_TARGET].fillna(0)
 
-        # Encodear DESPUÉS del split para evitar data leakage
+        X_test = test[XGB_CANTIDAD_FEATURES]
+        y_test = test[XGB_CANTIDAD_TARGET].fillna(0)
+
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+
         X_train = X_train.copy()
         X_test = X_test.copy()
+
         X_train[CAT_FEATURES] = enc.fit_transform(
             X_train[CAT_FEATURES].fillna("DESCONOCIDO")
         )
         X_test[CAT_FEATURES] = enc.transform(X_test[CAT_FEATURES].fillna("DESCONOCIDO"))
-        ctx.extra["encoder"] = enc
 
         # XGBRegressor: predice CUÁNTO comprar, no solo si compra o no
         model = xgb.XGBRegressor(
@@ -399,9 +428,19 @@ class TrainCantidadStep(BaseStep[TrainingContext]):
             verbose=False,
         )
 
-        mae = mean_absolute_error(y_test, model.predict(X_test))
-        print(f"XGBoost entrenado | MAE en test: {mae:.2f} unidades")
+        y_pred = model.predict(X_test)
+        mae = mean_absolute_error(y_test, y_pred)
 
+        
+
+        mean_y = y_test.mean()
+        mae_pct = mae / mean_y if mean_y > 0 else 0
+        print("Mean:", mean_y)
+        print("MAE:", mae)
+        print("MAE %:", mae_pct)
+        print(y_test.describe())
+
+        ctx.extra["encoder"] = enc
         ctx.extra["xgboost_model"] = model
         ctx.extra["xgb_features"] = XGB_CANTIDAD_FEATURES
         ctx.extra["mae"] = mae
@@ -440,6 +479,7 @@ class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
                 sucursal=("sucursal", "first"),
                 num_compras_producto=("cantidad_vendida", "count"),
                 meses_activo_producto=("mes", "nunique"),
+                fecha_venta=("fecha_venta", "max"),
             )
             .reset_index()
         )
@@ -459,7 +499,7 @@ class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
         data_af["prom_cantidad_mes"] = data_af["prom_cantidad_mes"].fillna(0)
 
         # ── Feature: compro en este mes el año anterior? ───────────────────
-        umbral_anio_ant = fecha_max - pd.Timedelta(days=300)
+        umbral_anio_ant = fecha_max - pd.Timedelta(days=365)
         compro_anio_ant = (
             df[(df["mes"] == mes_actual) & (df["fecha_venta"] < umbral_anio_ant)]
             .groupby(["cliente_id", "nombre_producto"])
@@ -525,29 +565,28 @@ class PrepareDataAfinidadStep(BaseStep[TrainingContext]):
 
         ctx.extra["data_af"] = data_af
         print(f"Dataset afinidad listo: {len(data_af):,} filas")
-        print(data_af.head())
         print(data_af.info())
         return ctx
 
 
 class TrainAfinidadStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        data_af = cast(pd.DataFrame, ctx.extra.get("data_af"))
+        data_af = ctx.extra.get("data_af")
         if data_af is None:
-            ctx.errors.append(
-                "TrainAfinidadStep: data_af es None, "
-                "PrepareDataAfinidadStep no se ejecutó."
-            )
+            ctx.errors.append("TrainAfinidadStep: data_af es None.")
             return ctx
 
         data_af = data_af.copy()
+        data_af = data_af.sort_values("fecha_venta")
+        cutoff_date = data_af["fecha_venta"].quantile(0.8)
+        train = data_af[data_af["fecha_venta"] <= cutoff_date]
+        test = data_af[data_af["fecha_venta"] > cutoff_date]
 
-        X = data_af[XGB_AFINIDAD_FEATURES]
-        y = data_af[XGB_AFINIDAD_TARGET]
+        X_train = train[XGB_AFINIDAD_FEATURES]
+        y_train = train[XGB_AFINIDAD_TARGET].fillna(0)
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        X_test = test[XGB_AFINIDAD_FEATURES]
+        y_test = test[XGB_AFINIDAD_TARGET].fillna(0)
 
         # Encodear DESPUÉS del split para evitar data leakage
         enc_af = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
@@ -559,7 +598,6 @@ class TrainAfinidadStep(BaseStep[TrainingContext]):
         X_test[CAT_FEATURES] = enc_af.transform(
             X_test[CAT_FEATURES].fillna("DESCONOCIDO")
         )
-        ctx.extra["encoder_af"] = enc_af
 
         model_af = xgb.XGBRegressor(
             n_estimators=300,
@@ -579,10 +617,19 @@ class TrainAfinidadStep(BaseStep[TrainingContext]):
             verbose=False,
         )
 
-        y_pred = np.clip(model_af.predict(X_test), 0, 1)
+        y_pred = model_af.predict(X_test)
         mae = mean_absolute_error(y_test, y_pred)
-        print(f"Modelo afinidad entrenado | MAE score: {mae:.4f}")
+        metricas_ranking = evaluar_afinidad_ranking(test, y_pred, k_values=[5, 10, 20])
+        print(metricas_ranking)
+        
+        mean_y = y_test.mean()
+        mae_pct = mae / mean_y if mean_y > 0 else 0
+        print("Mean:", mean_y)
+        print("MAE:", mae)
+        print("MAE %:", mae_pct)
+        print(y_test.describe())
 
+        ctx.extra["encoder_af"] = enc_af
         ctx.extra["model_af"] = model_af
         ctx.extra["af_features"] = XGB_AFINIDAD_FEATURES
         ctx.extra["mae_af"] = mae
@@ -622,8 +669,6 @@ class SaveModelStep(BaseStep[TrainingContext]):
 
         ctx.extra["path_model"] = path_model
         print(f"Modelo guardado en: {path_model}")
-        print(f"  MAE cantidad:  {ctx.extra['mae']:.2f} unidades")
-        print(f"  MAE afinidad:  {ctx.extra['mae_af']:.4f} score")
         return ctx
 
 
