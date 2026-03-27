@@ -286,7 +286,7 @@ class RankAndPredictStep(BaseStep[PredictContext]):
     Flujo:
         1. Asigna score a cada candidato = pct_vecinos (fracción de vecinos
            que compran ese producto). A mayor score, más recomendado.
-        2. Pre-selecciona top N×3 por score para reducir el costo de
+        2. Pre-selecciona top Nx3 por score para reducir el costo de
            inferencia del regresor.
         3. Predice la cantidad sugerida con XGBRegressor solo para los
            pre-seleccionados.
