@@ -116,7 +116,6 @@ class CalculatedFeatureStep(BaseStep[TrainingContext]):
     - dias_desde_ultima_compra: recencia respecto a la fecha máxima del dataset.
     - dia_semana / mes: señales de estacionalidad.
 
-    También guarda fecha_max en ctx.extra, usada como referencia de recencia.
     Resultado: ctx.clean_data con las columnas anteriores añadidas.
     """
 
