@@ -7,7 +7,8 @@ from app.domain.ml.model_registry import model_registry
 class PredictService:
 
     def predict(self, model_name: str, hyperparams: dict) -> PredictResponseDTO:
-        path_model = "C:\\xNahuel\\Proyectos\\xApiPredict\\storage\\models\\modelo_pedido_sugerido_1.0.pkl"
+        # path_model = "C:\\xNahuel\\Proyectos\\xApiPredict\\storage\\models\\modelo_pedido_sugerido_1.0.pkl"
+        path_model = "C:\\xDesarrollo\\MachineLearning\\Api-Predict-DualBiz\\storage\\models\\modelo_pedido_sugerido_1.0.pkl"
         meta_data = ModelMetadata(
             name=model_name,
             version="1.0",

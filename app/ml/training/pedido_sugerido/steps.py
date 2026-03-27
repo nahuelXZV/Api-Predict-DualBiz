@@ -9,6 +9,8 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import OrdinalEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+from mlxtend.preprocessing import TransactionEncoder
 
 from app.domain.ml.base_step import BaseStep
 from app.domain.ml.base_context import TrainingContext
@@ -61,7 +63,7 @@ class LoadDataStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class CleanDataStep(BaseStep[TrainingContext]):
+class EDA_CleanDataStep(BaseStep[TrainingContext]):
     """
     Normaliza los nombres de columnas al formato snake_case interno y elimina
     filas con valores nulos en campos críticos (cliente_id, nombre_producto,
@@ -103,7 +105,7 @@ class CleanDataStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class CalculatedFeatureStep(BaseStep[TrainingContext]):
+class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
     """
     Calcula features derivadas a nivel de transacción a partir del historial
     de ventas ordenado por cliente-producto-fecha:
@@ -158,12 +160,30 @@ class CalculatedFeatureStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class KMeansStep(BaseStep[TrainingContext]):
+def CalcularNroClusterKMeans(data: pd.DataFrame) -> int:
+    inercias = []
+    for k in range(2, 8 + 1):
+        km = KMeans(n_clusters=k, init="k-means++", random_state=42, n_init=10)
+        km.fit(data)
+        inercias.append(km.inertia_)
+
+    segunda_derivada = np.diff(np.diff(inercias))
+    nro_clusters_calculados = int(np.argmax(segunda_derivada)) + 4
+    print(f"Total de clusters calculados: {nro_clusters_calculados}")
+    return nro_clusters_calculados
+
+
+class Clustering_KMeansStep(BaseStep[TrainingContext]):
     """
     Segmenta los clientes en grupos de comportamiento de compra usando KMeans.
     Cada cliente se resume en un vector con: cantidad promedio comprada,
     promedio histórico, frecuencia entre compras, variedad de productos y
     meses activo. Se escala con StandardScaler antes de clustering.
+    Ejemplo:
+        Cluster 1 → clientes grandes (alto volumen)
+        Cluster 2 → clientes frecuentes
+        Cluster 3 → clientes pequeños
+        Cluster 4 → clientes irregulares
 
     El segmento resultante se añade como columna a ctx.clean_data para que
     los modelos XGBoost puedan usarlo como feature.
@@ -204,7 +224,11 @@ class KMeansStep(BaseStep[TrainingContext]):
         scaler_km = StandardScaler()
         x_km = scaler_km.fit_transform(data_km[feats_km])
 
-        model_km = KMeans(n_clusters=5, init="k-means++", random_state=42, n_init=10)
+        nro_clusters = CalcularNroClusterKMeans(x_km)
+
+        model_km = KMeans(
+            n_clusters=nro_clusters, init="k-means++", random_state=42, n_init="auto"
+        )
         data_km["segmento"] = model_km.fit_predict(x_km)
 
         seg_map = data_km.set_index("cliente_id")["segmento"]
@@ -221,7 +245,31 @@ class KMeansStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class KnnStep(BaseStep[TrainingContext]):
+def CalcularNroVecinosKnn(data: pd.DataFrame, k_min: int = 3, k_max: int = 51) -> int:
+    """
+    Usa la curva de distancias promedio para encontrar el número óptimo
+    de vecinos. Similar al método del codo en KMeans.
+    """
+    k_max = min(k_max, len(data) - 1)
+    k_range = range(k_min, k_max + 1, 2)  # solo impares: 3, 5, 7, ...
+    distancias_promedio = []
+
+    for k in k_range:
+        nn = NearestNeighbors(n_neighbors=k, metric="cosine")
+        nn.fit(data)
+        distancias, _ = nn.kneighbors(data)
+        distancias_promedio.append(
+            distancias[:, -1].mean()
+        )  # dist al vecino más lejano
+
+    segunda_derivada = np.diff(np.diff(distancias_promedio))
+    k_optimo = list(k_range)[int(np.argmax(segunda_derivada)) + 2]
+
+    print(f"KNN: k óptimo por codo = {k_optimo}")
+    return k_optimo
+
+
+class VecinosCercanos_KnnStep(BaseStep[TrainingContext]):
     """
     Construye el modelo de vecinos cercanos (KNN) para encontrar clientes
     similares en tiempo de predicción. Es independiente de KMeansStep.
@@ -244,6 +292,12 @@ class KnnStep(BaseStep[TrainingContext]):
         - feats_num: lista de features numéricas
         - cat_features: lista de features categóricas
         - data: DataFrame con el perfil agregado de cada cliente
+
+    n_neighbors = número de vecinos que vas a usar para comparar
+    Ejemplo:
+        n_neighbors = 3 → miras 3 clientes parecidos
+        n_neighbors = 5 → miras 5 clientes
+        n_neighbors = 10 → miras 10 clientes
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -285,7 +339,7 @@ class KnnStep(BaseStep[TrainingContext]):
         x_cat_knn = enc_cat_knn.fit_transform(data_knn[feats_cat_knn].astype(str))
         x_knn = np.hstack([x_num_knn, x_cat_knn])
 
-        n_neighbors = min(21, len(all_customers))
+        n_neighbors = CalcularNroVecinosKnn(x_knn)
         model_knn = NearestNeighbors(n_neighbors=n_neighbors, metric="cosine")
         model_knn.fit(x_knn)
 
@@ -299,6 +353,68 @@ class KnnStep(BaseStep[TrainingContext]):
             "data": data_knn,
         }
         ctx.extra["model_knn"] = model_knn
+        return ctx
+
+
+class ConjuntoReglasApriori_Step(BaseStep[TrainingContext]):
+    """
+    Genera reglas de asociación entre productos usando el algoritmo Apriori.
+    Opera sobre el historial de transacciones agrupado por cliente: cada
+    cliente representa una "canasta" con los productos que compró alguna vez.
+
+    Parámetros:
+        - min_support: fracción mínima de clientes que compran el conjunto
+          (default 0.05 = al menos 5% de clientes)
+        - min_confidence: confianza mínima de la regla A→B
+          (default 0.3 = al menos 30% de quienes compran A también compran B)
+        - min_lift: lift mínimo para filtrar reglas triviales
+          (default 1.0 = la regla debe aportar más que el azar)
+
+    Artefacto guardado en ctx.extra["model_apriori"]:
+        - rules: DataFrame con columnas antecedents, consequents,
+                 confidence, lift, support
+    """
+
+    def execute(self, ctx: TrainingContext) -> TrainingContext:
+        if ctx.clean_data is None:
+            ctx.errors.append("AprioriStep: clean_data es None.")
+            return ctx
+
+        min_support = ctx.extra.get("apriori_min_support", 0.05)
+        min_confidence = ctx.extra.get("apriori_min_confidence", 0.3)
+        min_lift = ctx.extra.get("apriori_min_lift", 1.0)
+
+        df = ctx.clean_data
+
+        # Una canasta por cliente: lista de productos que compró
+        canastas = df.groupby("cliente_id")["nombre_producto"].apply(list).tolist()
+
+        te = TransactionEncoder()
+        te_array = te.fit_transform(canastas)
+        df_encoded = pd.DataFrame(te_array, columns=te.columns_)
+
+        frequent_itemsets = apriori(
+            df_encoded,
+            min_support=min_support,
+            use_colnames=True,
+        )
+
+        rules = association_rules(
+            frequent_itemsets,
+            metric="confidence",
+            min_threshold=min_confidence,
+        )
+        rules = rules[rules["lift"] >= min_lift].copy()
+
+        # Simplifica: antecedente y consecuente como strings (1 producto c/u)
+        rules = rules[rules["antecedents"].apply(len) == 1].copy()
+        rules["antecedent"] = rules["antecedents"].apply(lambda x: list(x)[0])
+        rules["consequent"] = rules["consequents"].apply(lambda x: list(x)[0])
+        rules = rules[["antecedent", "consequent", "support", "confidence", "lift"]]
+        rules = rules.sort_values("confidence", ascending=False).reset_index(drop=True)
+
+        ctx.extra["model_apriori"] = {"rules": rules}
+        print(f"AprioriStep: {len(rules)} reglas generadas")
         return ctx
 
 
@@ -351,7 +467,7 @@ class PrepareDataXGBStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class TrainCantidadStep(BaseStep[TrainingContext]):
+class EnsembleArboles_XGBoostStep(BaseStep[TrainingContext]):
     """
     Entrena un XGBRegressor para predecir la cantidad sugerida de un producto
     para un cliente (target: cantidad_vendida promedio por transacción).
@@ -421,6 +537,7 @@ class SaveModelStep(BaseStep[TrainingContext]):
             "model_km": ctx.extra["model_km"],
             "model_knn": ctx.extra["model_knn"],
             "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
+            "model_apriori": ctx.extra["model_apriori"],
             "perfil_productos": ctx.clean_data,
         }
 
