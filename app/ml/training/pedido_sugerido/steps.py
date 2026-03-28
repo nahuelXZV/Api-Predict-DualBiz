@@ -12,11 +12,18 @@ from sklearn.preprocessing import OrdinalEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
+from app.domain.core.logging import logger
 from app.domain.ml.base_step import BaseStep
 from app.domain.ml.base_context import TrainingContext
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.ml.training.pedido_sugerido.utils import (
+    calcular_mejores_params_xgb,
+    calcular_nro_clusters_kmeans,
+    calcular_nro_vecinos_knn,
+    calcular_params_apriori,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[4]
 DATA_PATH = BASE_DIR / "storage" / "data" / "consulta_base.csv"
@@ -57,13 +64,14 @@ class LoadDataStep(BaseStep[TrainingContext]):
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
+        logger.info("dataset_cargado", path=str(DATA_PATH))
         df = pd.read_csv(DATA_PATH)
-        print(f"Dataset original: {len(df):,} filas | {df.shape[1]} columnas")
+        logger.info("dataset_leido", filas=len(df), columnas=df.shape[1])
         ctx.raw_data = df
         return ctx
 
 
-class EDA_CleanDataStep(BaseStep[TrainingContext]):
+class EdaCleanDataStep(BaseStep[TrainingContext]):
     """
     Normaliza los nombres de columnas al formato snake_case interno y elimina
     filas con valores nulos en campos críticos (cliente_id, nombre_producto,
@@ -74,7 +82,7 @@ class EDA_CleanDataStep(BaseStep[TrainingContext]):
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.raw_data is None:
-            ctx.errors.append("CleanDataStep: raw_data es None.")
+            ctx.errors.append("EdaCleanDataStep: raw_data es None.")
             return ctx
 
         df = ctx.raw_data.copy()
@@ -99,7 +107,10 @@ class EDA_CleanDataStep(BaseStep[TrainingContext]):
 
         antes = len(df)
         df = df.dropna(subset=["cliente_id", "nombre_producto", "cantidad_vendida"])
-        print(f"Limpieza: {antes - len(df):,} filas eliminadas → {len(df):,} útiles")
+        eliminadas = antes - len(df)
+        logger.info("limpieza_completada", filas_eliminadas=eliminadas, filas_utiles=len(df))
+        if eliminadas > 0:
+            logger.warning("filas_con_nulos_eliminadas", cantidad=eliminadas)
 
         ctx.clean_data = df
         return ctx
@@ -156,24 +167,11 @@ class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
         df["mes"] = df["fecha_venta"].dt.month
 
         ctx.clean_data = df
-        print(f"Features derivadas calculadas. Columnas: {list(df.columns)}")
+        logger.info("features_derivadas_calculadas", n_columnas=len(df.columns))
         return ctx
 
 
-def CalcularNroClusterKMeans(data: pd.DataFrame) -> int:
-    inercias = []
-    for k in range(2, 8 + 1):
-        km = KMeans(n_clusters=k, init="k-means++", random_state=42, n_init=10)
-        km.fit(data)
-        inercias.append(km.inertia_)
-
-    segunda_derivada = np.diff(np.diff(inercias))
-    nro_clusters_calculados = int(np.argmax(segunda_derivada)) + 4
-    print(f"Total de clusters calculados: {nro_clusters_calculados}")
-    return nro_clusters_calculados
-
-
-class Clustering_KMeansStep(BaseStep[TrainingContext]):
+class ClusteringKMeansStep(BaseStep[TrainingContext]):
     """
     Segmenta los clientes en grupos de comportamiento de compra usando KMeans.
     Cada cliente se resume en un vector con: cantidad promedio comprada,
@@ -213,7 +211,10 @@ class Clustering_KMeansStep(BaseStep[TrainingContext]):
             .agg(
                 cantidad_vendida=("cantidad_vendida", "mean"),
                 promedio_historico=("promedio_historico", "mean"),
-                dias_entre_compras=("dias_entre_compras", "mean"),
+                dias_entre_compras=(
+                    "dias_entre_compras",
+                    lambda x: x[x > 0].mean() if (x > 0).any() else 0,
+                ),
                 num_productos_distintos=("nombre_producto", "nunique"),
                 meses_activo=("mes", "nunique"),
             )
@@ -223,8 +224,7 @@ class Clustering_KMeansStep(BaseStep[TrainingContext]):
 
         scaler_km = StandardScaler()
         x_km = scaler_km.fit_transform(data_km[feats_km])
-
-        nro_clusters = CalcularNroClusterKMeans(x_km)
+        nro_clusters = calcular_nro_clusters_kmeans(x_km)
 
         model_km = KMeans(
             n_clusters=nro_clusters, init="k-means++", random_state=42, n_init="auto"
@@ -245,31 +245,7 @@ class Clustering_KMeansStep(BaseStep[TrainingContext]):
         return ctx
 
 
-def CalcularNroVecinosKnn(data: pd.DataFrame, k_min: int = 3, k_max: int = 51) -> int:
-    """
-    Usa la curva de distancias promedio para encontrar el número óptimo
-    de vecinos. Similar al método del codo en KMeans.
-    """
-    k_max = min(k_max, len(data) - 1)
-    k_range = range(k_min, k_max + 1, 2)  # solo impares: 3, 5, 7, ...
-    distancias_promedio = []
-
-    for k in k_range:
-        nn = NearestNeighbors(n_neighbors=k, metric="cosine")
-        nn.fit(data)
-        distancias, _ = nn.kneighbors(data)
-        distancias_promedio.append(
-            distancias[:, -1].mean()
-        )  # dist al vecino más lejano
-
-    segunda_derivada = np.diff(np.diff(distancias_promedio))
-    k_optimo = list(k_range)[int(np.argmax(segunda_derivada)) + 2]
-
-    print(f"KNN: k óptimo por codo = {k_optimo}")
-    return k_optimo
-
-
-class VecinosCercanos_KnnStep(BaseStep[TrainingContext]):
+class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
     """
     Construye el modelo de vecinos cercanos (KNN) para encontrar clientes
     similares en tiempo de predicción. Es independiente de KMeansStep.
@@ -310,16 +286,27 @@ class VecinosCercanos_KnnStep(BaseStep[TrainingContext]):
             "cantidad_vendida",
             "promedio_historico",
             "dias_entre_compras",
+            "num_productos_distintos",
             "meses_activo",
         ]
-        feats_cat_knn = ["sucursal", "zona_id", "ruta_id", "clasificacion_cliente"]
+        feats_cat_knn = [
+            "sucursal",
+            "zona_id",
+            "ruta_id",
+            "clasificacion_cliente",
+            "segmento",
+        ]
 
         data_knn = (
             df.groupby("cliente_id")
             .agg(
                 cantidad_vendida=("cantidad_vendida", "mean"),
                 promedio_historico=("promedio_historico", "mean"),
-                dias_entre_compras=("dias_entre_compras", "mean"),
+                dias_entre_compras=(
+                    "dias_entre_compras",
+                    lambda x: x[x > 0].mean() if (x > 0).any() else 0,
+                ),
+                num_productos_distintos=("nombre_producto", "nunique"),
                 meses_activo=("mes", "nunique"),
                 clasificacion_cliente=("clasificacion_cliente", "first"),
                 sucursal=("sucursal", "first"),
@@ -339,7 +326,7 @@ class VecinosCercanos_KnnStep(BaseStep[TrainingContext]):
         x_cat_knn = enc_cat_knn.fit_transform(data_knn[feats_cat_knn].astype(str))
         x_knn = np.hstack([x_num_knn, x_cat_knn])
 
-        n_neighbors = CalcularNroVecinosKnn(x_knn)
+        n_neighbors = calcular_nro_vecinos_knn(x_knn)
         model_knn = NearestNeighbors(n_neighbors=n_neighbors, metric="cosine")
         model_knn.fit(x_knn)
 
@@ -356,7 +343,7 @@ class VecinosCercanos_KnnStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class ConjuntoReglasApriori_Step(BaseStep[TrainingContext]):
+class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
     """
     Genera reglas de asociación entre productos usando el algoritmo Apriori.
     Opera sobre el historial de transacciones agrupado por cliente: cada
@@ -380,18 +367,23 @@ class ConjuntoReglasApriori_Step(BaseStep[TrainingContext]):
             ctx.errors.append("AprioriStep: clean_data es None.")
             return ctx
 
-        min_support = ctx.extra.get("apriori_min_support", 0.05)
-        min_confidence = ctx.extra.get("apriori_min_confidence", 0.3)
-        min_lift = ctx.extra.get("apriori_min_lift", 1.0)
-
         df = ctx.clean_data
 
-        # Una canasta por cliente: lista de productos que compró
-        canastas = df.groupby("cliente_id")["nombre_producto"].apply(list).tolist()
+        # Una canasta por cliente: productos únicos que compró
+        canastas = (
+            df.groupby("cliente_id")["nombre_producto"]
+            .apply(lambda x: x.unique().tolist())
+            .tolist()
+        )
+
+        params = calcular_params_apriori(canastas)
+        min_support = params["min_support"]
+        min_confidence = params["min_confidence"]
+        min_lift = params["min_lift"]
 
         te = TransactionEncoder()
         te_array = te.fit_transform(canastas)
-        df_encoded = pd.DataFrame(te_array, columns=te.columns_)
+        df_encoded = pd.DataFrame(te_array, columns=te.columns_)  # type: ignore
 
         frequent_itemsets = apriori(
             df_encoded,
@@ -399,10 +391,17 @@ class ConjuntoReglasApriori_Step(BaseStep[TrainingContext]):
             use_colnames=True,
         )
 
+        if frequent_itemsets.empty:
+            ctx.errors.append(
+                "AprioriStep: no se encontraron itemsets frecuentes. Bajá min_support."
+            )
+            return ctx
+
         rules = association_rules(
             frequent_itemsets,
             metric="confidence",
             min_threshold=min_confidence,
+            num_itemsets=len(df_encoded),
         )
         rules = rules[rules["lift"] >= min_lift].copy()
 
@@ -414,7 +413,7 @@ class ConjuntoReglasApriori_Step(BaseStep[TrainingContext]):
         rules = rules.sort_values("confidence", ascending=False).reset_index(drop=True)
 
         ctx.extra["model_apriori"] = {"rules": rules}
-        print(f"AprioriStep: {len(rules)} reglas generadas")
+        logger.info("apriori_reglas_generadas", total=len(rules))
         return ctx
 
 
@@ -448,8 +447,8 @@ class PrepareDataXGBStep(BaseStep[TrainingContext]):
                 promedio_ultimas_3=("promedio_ultimas_3", "last"),
                 dias_entre_compras=("dias_entre_compras", "mean"),
                 dias_desde_ultima_compra=("dias_desde_ultima_compra", "mean"),
-                dia_semana=("dia_semana", "first"),
-                mes=("mes", "first"),
+                dia_semana=("dia_semana", "last"),
+                mes=("mes", "last"),
                 marca=("marca", "first"),
                 linea_producto=("linea_producto", "first"),
                 clasificacion_cliente=("clasificacion_cliente", "first"),
@@ -461,13 +460,13 @@ class PrepareDataXGBStep(BaseStep[TrainingContext]):
             .reset_index()
         )
 
-        print(f"PrepareDataXGBStep: {len(data_xgb_df):,} pares cliente-producto")
+        logger.info("datos_xgb_preparados", pares_cliente_producto=len(data_xgb_df))
 
         ctx.extra["data_xgb_df"] = data_xgb_df
         return ctx
 
 
-class EnsembleArboles_XGBoostStep(BaseStep[TrainingContext]):
+class EnsembleArbolesXGBoostStep(BaseStep[TrainingContext]):
     """
     Entrena un XGBRegressor para predecir la cantidad sugerida de un producto
     para un cliente (target: cantidad_vendida promedio por transacción).
@@ -484,7 +483,7 @@ class EnsembleArboles_XGBoostStep(BaseStep[TrainingContext]):
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         data_xgb_df = ctx.extra.get("data_xgb_df")
         if data_xgb_df is None:
-            ctx.errors.append("TrainCantidadStep: data_xgb_df es None.")
+            ctx.errors.append("EnsembleArbolesXGBoostStep: data_xgb_df es None.")
             return ctx
 
         X = data_xgb_df[XGB_FEATURES].copy()
@@ -493,19 +492,21 @@ class EnsembleArboles_XGBoostStep(BaseStep[TrainingContext]):
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
 
+        config_xgb = calcular_mejores_params_xgb(X, y)
         model = xgb.XGBRegressor(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
+            n_estimators=config_xgb["n_estimators"],
+            learning_rate=config_xgb["learning_rate"],
+            max_depth=config_xgb["max_depth"],
+            subsample=config_xgb["subsample"],
+            colsample_bytree=config_xgb["colsample_bytree"],
+            min_child_weight=config_xgb["min_child_weight"],
+            gamma=config_xgb["gamma"],
             random_state=42,
             verbosity=0,
         )
+        logger.info("xgb_entrenando", muestras=len(X))
         model.fit(X, y)
-
-        print(f"TrainCantidadStep: modelo entrenado con {len(X):,} muestras")
-
+        logger.info("xgb_entrenado", muestras=len(X))
         model_xgb_cantidad = {
             "model": model,
             "encoder": enc,
@@ -536,8 +537,8 @@ class SaveModelStep(BaseStep[TrainingContext]):
         artefactos = {
             "model_km": ctx.extra["model_km"],
             "model_knn": ctx.extra["model_knn"],
-            "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
             "model_apriori": ctx.extra["model_apriori"],
+            "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
             "perfil_productos": ctx.clean_data,
         }
 
@@ -546,7 +547,7 @@ class SaveModelStep(BaseStep[TrainingContext]):
         joblib.dump({"artefactos": artefactos}, str(path_model))
 
         ctx.extra["path_model"] = path_model
-        print(f"Modelo guardado en: {path_model}")
+        logger.info("modelo_guardado", path=str(path_model), modelo=ctx.model_name, version=ctx.version)
         return ctx
 
 
@@ -558,8 +559,12 @@ class RegistryModelStep(BaseStep[TrainingContext]):
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        path_model = str(ctx.extra.get("path_model"))
+        path_model = ctx.extra.get("path_model")
+        if path_model is None:
+            ctx.errors.append("RegistryModelStep: path_model no encontrado.")
+            return ctx
 
+        path_model = str(path_model)
         meta_data = ModelMetadata(
             name=ctx.model_name,
             version=ctx.version,
