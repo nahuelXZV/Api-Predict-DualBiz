@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.domain.core.config import settings
 from app.domain.core.logging import setup_logging, logger
+from app.domain.core.load_models import load_initial_models
 from app.api.v1.router import router
 
 
@@ -10,6 +11,7 @@ from app.api.v1.router import router
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("startup", env=settings.app_env)
+    load_initial_models()
     yield
     logger.info("shutdown")
 

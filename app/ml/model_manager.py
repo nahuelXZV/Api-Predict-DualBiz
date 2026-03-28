@@ -1,5 +1,4 @@
 from __future__ import annotations
-import pandas as pd
 from app.domain.core.exceptions import ModelNotFoundError
 from app.domain.core.logging import logger
 from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
@@ -47,7 +46,7 @@ class ModelManager:
                 success=False, errors=[str(e)], model_name=model_name, version=version
             )
 
-    def predict(self, model_name: str, data: dict) -> pd.DataFrame:
+    def predict(self, model_name: str, data: dict) -> dict:
         logger.info("manager_predict_start", model=model_name)
 
         try:
@@ -60,11 +59,11 @@ class ModelManager:
             return model.predict(data)
         except Exception as e:
             logger.error("manager_predict_error", model=model_name, error=str(e))
-            response_error ={
+            response_error = {
                 "error": str(e),
                 "message": f"Error al predecir con el modelo '{model_name}'. Ver logs para más detalles.",
             }
-            return pd.DataFrame([response_error])
+            return response_error
 
     def list_models(self) -> list[ModelMetadataDTO]:
         return model_registry.list_models()
