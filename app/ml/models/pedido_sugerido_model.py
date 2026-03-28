@@ -26,7 +26,7 @@ class PedidoSugeridoModel(BaseMLModel):
             hyperparams=self.metadata.hyperparams,
             extra=self.metadata.extra,
             model=self._model,
-            data=data,
+            parameters=data,
         )
 
         pipeline = predict_pedido_sugerido_pipeline()
