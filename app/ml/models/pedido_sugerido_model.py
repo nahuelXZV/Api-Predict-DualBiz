@@ -1,5 +1,4 @@
 import joblib
-import pandas as pd
 
 from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.base_context import PredictContext
@@ -16,7 +15,7 @@ class PedidoSugeridoModel(BaseMLModel):
         loaded = joblib.load(path)
         self._model = loaded
 
-    def predict(self, data: dict) -> pd.DataFrame:
+    def predict(self, data: dict) -> dict:
         if self._model is None:
             raise ModelNotLoadedError(self.metadata.name)
         
