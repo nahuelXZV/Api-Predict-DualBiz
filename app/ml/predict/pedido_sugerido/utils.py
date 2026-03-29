@@ -1,6 +1,7 @@
 import pandas as pd
 
 
+<<<<<<< HEAD
 def apply_pareto(
     df: pd.DataFrame, top_n: int, cantidad_minima: float, porcentaje_volumen: float
 ) -> pd.DataFrame:
@@ -34,6 +35,8 @@ def apply_pareto(
     return df[mask].head(top_n)
 
 
+=======
+>>>>>>> bfaa3fb2cac645cc53a2b75ba8d9a7a20814fa99
 def build_features_candidatos(
     candidatos: list,
     cliente_id,
@@ -92,7 +95,13 @@ def build_features_candidatos(
             dias_entre_compras = float(ctx_base["dias_entre_compras"])
             dias_desde_ultima_compra = 999
             marca = (
+<<<<<<< HEAD
                 prod_info["marca"].iloc[0] if len(prod_info) > 0 else ctx_base["marca"]
+=======
+                prod_info["marca"].iloc[0]
+                if len(prod_info) > 0
+                else ctx_base["marca"]
+>>>>>>> bfaa3fb2cac645cc53a2b75ba8d9a7a20814fa99
             )
             linea_producto = (
                 prod_info["linea_producto"].iloc[0]
