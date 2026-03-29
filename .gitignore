@@ -7,3 +7,5 @@ models/*.pkl
 .vscode/
 logs/
 storage/models/*
+
+logs/

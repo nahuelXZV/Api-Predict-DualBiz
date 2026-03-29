@@ -13,7 +13,11 @@ async def predict(
     model_name: str = Query("pedido_sugerido", description="Nombre del modelo"),
     hyperparams: str = Query(
         default="{}",
+<<<<<<< HEAD
         description='Hiperparámetros en formato JSON. Ejemplo: {"cliente_id": 14111, "cantidad_minima": 5, "top_n": 50,"solo_nuevos": true,"porcentaje_pareto": 20}',
+=======
+        description='Hiperparámetros en formato JSON. Ejemplo: {"cliente_id": 14111, "cantidad_minima": 5, "top_n": 10,"solo_nuevos": true}',
+>>>>>>> bfaa3fb2cac645cc53a2b75ba8d9a7a20814fa99
     ),
 ):
     service = PredictService()
