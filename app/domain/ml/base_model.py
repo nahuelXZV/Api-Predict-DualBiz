@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import Any
-import pandas as pd
 
 from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.model_metadata import ModelMetadata
@@ -15,7 +14,7 @@ class BaseMLModel(ABC):
     def load(self, path: str) -> None: ...
 
     @abstractmethod
-    def predict(self, data: dict) -> pd.DataFrame: ...
+    def predict(self, data: dict) -> dict: ...
 
     @property
     def is_loaded(self) -> bool:

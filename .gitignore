@@ -5,3 +5,5 @@ __pycache__/
 models/*.pkl
 .pytest_cache/
 .vscode/
+
+logs/
