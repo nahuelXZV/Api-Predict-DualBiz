@@ -1,6 +1,39 @@
 import pandas as pd
 
 
+def apply_pareto(
+    df: pd.DataFrame, top_n: int, cantidad_minima: float, porcentaje_volumen: float
+) -> pd.DataFrame:
+    """
+    Filtra un DataFrame de recomendaciones aplicando la ley de Pareto sobre
+    cantidad_sugerida.
+
+    Pasos:
+        1. Excluye productos con cantidad_sugerida < cantidad_minima.
+        2. Ordena por cantidad_sugerida descendente.
+        3. Retiene los productos que cubren el PORCENTAJE_PARETO (20%) del
+           volumen total acumulado — incluyendo el producto que cruza el umbral.
+        4. Aplica top_n como techo máximo.
+
+    Args:
+        df: DataFrame con al menos las columnas 'cantidad_sugerida'.
+        top_n: Número máximo de productos a retornar.
+        cantidad_minima: Umbral mínimo de cantidad_sugerida para incluir un producto.
+        porcentaje_volumen: Porcentaje del volumen total de cantidad_sugerida que se quiere cubrir.
+
+    Returns:
+        DataFrame filtrado, ordenado por cantidad_sugerida descendente.
+    """
+    df = df[df["cantidad_sugerida"] >= cantidad_minima].copy()
+    if df.empty:
+        return df
+    df = df.sort_values("cantidad_sugerida", ascending=False)
+    total = df["cantidad_sugerida"].sum()
+    cum_pct = df["cantidad_sugerida"].cumsum() / total
+    mask = cum_pct.shift(fill_value=0) < porcentaje_volumen
+    return df[mask].head(top_n)
+
+
 def build_features_candidatos(
     candidatos: list,
     cliente_id,
@@ -59,9 +92,7 @@ def build_features_candidatos(
             dias_entre_compras = float(ctx_base["dias_entre_compras"])
             dias_desde_ultima_compra = 999
             marca = (
-                prod_info["marca"].iloc[0]
-                if len(prod_info) > 0
-                else ctx_base["marca"]
+                prod_info["marca"].iloc[0] if len(prod_info) > 0 else ctx_base["marca"]
             )
             linea_producto = (
                 prod_info["linea_producto"].iloc[0]

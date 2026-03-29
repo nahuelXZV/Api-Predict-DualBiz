@@ -330,6 +330,14 @@ class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
         model_knn = NearestNeighbors(n_neighbors=n_neighbors, metric="cosine")
         model_knn.fit(x_knn)
 
+        perfil_pivot = ctx.clean_data.pivot_table(
+            index="cliente_id",
+            columns="nombre_producto",
+            values="cantidad_vendida",
+            aggfunc="sum",
+            fill_value=0,
+        )
+
         model_knn = {
             "model": model_knn,
             "customers": all_customers,
@@ -338,6 +346,7 @@ class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
             "feats_num": feats_num_knn,
             "cat_features": feats_cat_knn,
             "data": data_knn,
+            "perfil_pivot": perfil_pivot,
         }
         ctx.extra["model_knn"] = model_knn
         return ctx

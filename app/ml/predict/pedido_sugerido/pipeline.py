@@ -3,10 +3,12 @@ from app.ml.predict.pedido_sugerido.steps import (
     AprioriBuildCandidatesStep,
     AprioriRankAndPredictStep,
     BuildResponseStep,
+    DestacadosStep,
     KnnBuildCandidatesStep,
     KnnFindNeighborsStep,
     KnnRankAndPredictStep,
     LoadModelStep,
+    ParetoFilterStep,
     ValidateClienteStep,
 )
 
@@ -24,5 +26,8 @@ def predict_pedido_sugerido_pipeline() -> BasePipeline:
     pipeline.add_step(AprioriBuildCandidatesStep())
     pipeline.add_step(AprioriRankAndPredictStep())
 
+    # Build response
+    pipeline.add_step(ParetoFilterStep())
+    pipeline.add_step(DestacadosStep())
     pipeline.add_step(BuildResponseStep())
     return pipeline
