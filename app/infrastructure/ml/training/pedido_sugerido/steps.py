@@ -443,7 +443,7 @@ class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class PrepareDataXGBStep(BaseStep[TrainingContext]):
+class PrepareDataArbolesStep(BaseStep[TrainingContext]):
     """
     Construye el DataFrame de entrenamiento para los modelos XGBoost,
     con una fila por par (cliente_id, nombre_producto).
@@ -622,8 +622,8 @@ class SaveModelStep(BaseStep[TrainingContext]):
             "model_km": ctx.extra["model_km"],
             "model_knn": ctx.extra["model_knn"],
             "model_apriori": ctx.extra["model_apriori"],
-            "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
-            # "model_rf_cantidad": ctx.extra["model_rf_cantidad"],
+            # "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
+            "model_rf_cantidad": ctx.extra["model_rf_cantidad"],
             "perfil_productos": ctx.clean_data,
         }
 
