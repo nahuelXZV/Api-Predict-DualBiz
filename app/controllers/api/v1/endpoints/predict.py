@@ -1,0 +1,29 @@
+from typing import cast
+
+from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema
+
+from app.controllers.api.responses import success_response
+from app.controllers.api.v1.endpoints.serializers import PredictRequestSerializer, PredictResponseSerializer
+from app.application.services.predict_service import PredictService
+
+
+class PredictView(APIView):
+    @extend_schema(
+        tags=["predict"],
+        summary="Realizar predicción con un modelo cargado",
+        request=PredictRequestSerializer,
+        responses={200: PredictResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PredictRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict, serializer.validated_data)
+
+        service = PredictService()
+        result = service.predict(
+            model_name=data["model_name"],
+            hyperparams=data["parameters"],
+        )
+
+        return success_response(data=result, message="Predicción completada exitosamente.")

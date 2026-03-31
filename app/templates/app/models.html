@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Modelos cargados</title>
+</head>
+<body>
+    <h1>Modelos cargados</h1>
+    <p><a href="/">← Volver</a></p>
+
+    {% if models %}
+        <table border="1" cellpadding="8">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Versión</th>
+                    <th>Target</th>
+                    <th>Cargado en</th>
+                    <th>Path</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for model in models %}
+                <tr>
+                    <td>{{ model.name }}</td>
+                    <td>{{ model.version }}</td>
+                    <td>{{ model.target_name }}</td>
+                    <td>{{ model.loaded_at }}</td>
+                    <td>{{ model.path_model }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No hay modelos cargados.</p>
+    {% endif %}
+</body>
+</html>

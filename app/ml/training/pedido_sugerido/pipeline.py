@@ -4,8 +4,8 @@ from app.ml.training.pedido_sugerido.steps import (
     ClusteringKMeansStep,
     ConjuntoReglasAprioriStep,
     EdaCleanDataStep,
-    EnsembleArbolesRandomForestStep,
-    # EnsembleArbolesXGBoostStep,
+    # EnsembleArbolesRandomForestStep,
+    EnsembleArbolesXGBoostStep,
     LoadDataStep,
     PrepareDataXGBStep,
     RegistryModelStep,
@@ -24,8 +24,8 @@ def build_pedido_sugerido_pipeline() -> BasePipeline:
     pipeline.add_step(VecinosCercanosKnnStep())
     pipeline.add_step(ConjuntoReglasAprioriStep())
     pipeline.add_step(PrepareDataXGBStep())
-    # pipeline.add_step(EnsembleArbolesXGBoostStep())
-    pipeline.add_step(EnsembleArbolesRandomForestStep())
+    pipeline.add_step(EnsembleArbolesXGBoostStep())
+    # pipeline.add_step(EnsembleArbolesRandomForestStep())
     pipeline.add_step(SaveModelStep())
     pipeline.add_step(RegistryModelStep())
 

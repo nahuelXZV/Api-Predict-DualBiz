@@ -25,7 +25,6 @@ class BasePipeline(Generic[T]):
         )
 
         for step in self._steps:
-            print(f"Ejecutando step: {step.name}")
             if ctx.has_errors:
                 skipped = [
                     s.name for s in self._steps

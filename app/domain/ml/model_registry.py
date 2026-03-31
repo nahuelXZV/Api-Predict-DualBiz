@@ -8,8 +8,8 @@ from app.domain.core.exceptions import (
     ModelNotFoundError,
     ModelNotReadyError,
 )
-from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
 from app.domain.ml.base_model import BaseMLModel
+from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.core.logging import logger
 
 
@@ -75,11 +75,11 @@ class ModelRegistry:
     def exists(self, name: str) -> bool:
         return name in self._models
 
-    def list_models(self) -> list[ModelMetadataDTO]:
+    def list_models(self) -> list[ModelMetadata]:
         with self._lock:
             snapshot = list(self._models.items())
 
-        return [model.metadata.to_dto() for name, model in snapshot]
+        return [model.metadata for name, model in snapshot]
 
     def __iter__(self) -> Iterator[tuple[str, BaseMLModel]]:
         with self._lock:

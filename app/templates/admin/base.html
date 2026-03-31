@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Variables globales */
+    :root {
+        --color-primary: #1a1a2e;
+        --color-secondary: #16213e;
+        --color-accent: #0f3460;
+        --color-highlight: #e94560;
+        --color-text: #f0f0f0;
+    }
+
+    /* Header */
+    #header {
+        background: var(--color-primary);
+        color: var(--color-text);
+    }
+
+    #branding h1 a {
+        color: var(--color-text);
+        font-weight: 700;
+    }
+
+    /* Navbar superior */
+    #user-tools a {
+        color: var(--color-text);
+    }
+
+    /* Sidebar y módulos */
+    .module h2, .module caption {
+        background: var(--color-accent);
+        color: var(--color-text);
+    }
+
+    /* Links */
+    a:link, a:visited {
+        color: var(--color-highlight);
+    }
+
+    /* Botones */
+    .button, input[type="submit"], input[type="button"] {
+        background: var(--color-accent);
+        color: var(--color-text);
+        border: none;
+        border-radius: 4px;
+    }
+
+    .button:hover, input[type="submit"]:hover {
+        background: var(--color-highlight);
+    }
+</style>
+{% endblock %}

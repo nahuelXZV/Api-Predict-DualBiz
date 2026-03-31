@@ -82,6 +82,10 @@ def build_features_candidatos(
             marca = ultima["marca"]
             linea_producto = ultima["linea_producto"]
             fuente = "historial_propio"
+            num_productos_distintos = int(hist_prod["nombre_producto"].nunique())
+            importe_total_cliente = float(hist_prod["cantidad_vendida"].sum())
+            frecuencia_promedio_cliente = float(hist_prod["dias_entre_compras"].mean())
+            cantidad_productos_comprados = int(hist_prod["nombre_producto"].count())
         else:
             promedio_historico = (
                 float(prod_info["cantidad_vendida"].mean())
@@ -100,6 +104,10 @@ def build_features_candidatos(
                 else ctx_base["linea_producto"]
             )
             fuente = fuente_nueva
+            num_productos_distintos = int(prod_info["nombre_producto"].nunique()) if len(prod_info) > 0 else 0
+            importe_total_cliente = float(prod_info["cantidad_vendida"].sum()) if len(prod_info) > 0 else 0.0
+            frecuencia_promedio_cliente = float(prod_info["dias_entre_compras"].mean()) if len(prod_info) > 0 else 0.0
+            cantidad_productos_comprados = 0
 
         filas.append(
             {
@@ -117,6 +125,10 @@ def build_features_candidatos(
                 "dia_semana": int(ctx_base["dia_semana"]),
                 "mes": mes_actual,
                 "segmento": segmento,
+                "num_productos_distintos": num_productos_distintos,
+                "importe_total_cliente": importe_total_cliente,
+                "frecuencia_promedio_cliente": frecuencia_promedio_cliente,
+                "cantidad_productos_comprados": cantidad_productos_comprados,
                 "_fuente": fuente,
             }
         )
