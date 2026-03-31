@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     path_models: str = "storage/models"
     path_data: str = "storage/data"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

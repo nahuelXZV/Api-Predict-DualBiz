@@ -25,8 +25,8 @@ def _find_latest_pkl(model_name: str) -> Path | None:
 
 def load_initial_models() -> None:
     """
-    Carga y registra todos los modelos definidos en _MODELS_TO_LOAD al inicio
-    de la aplicación. Se ejecuta una sola vez en el lifespan de FastAPI.
+    Carga y registra todos los modelos definidos en _MODELS_TO_LOAD
+    al inicio de la aplicación. Se ejecuta en AppConfig.ready().
     """
     for model_name in _MODELS_TO_LOAD:
         path = _find_latest_pkl(model_name)

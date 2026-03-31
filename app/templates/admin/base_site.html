@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Api-Predict-DualBiz | Admin{% endblock %}
+
+{% block branding %}
+<a href="{% url 'admin:index' %}" id="site-name">
+    <strong>Api-Predict DualBiz</strong>
+</a>
+{% endblock %}
+
+{% block nav-global %}
+<nav style="background:#1a1a2e; padding:8px 16px; display:flex; gap:16px;">
+    <a href="/" style="color:#fff; text-decoration:none;">Inicio</a>
+    <a href="/models/" style="color:#fff; text-decoration:none;">Modelos</a>
+    <a href="/api/docs/" style="color:#fff; text-decoration:none;">Swagger</a>
+    <a href="{% url 'admin:index' %}" style="color:#fff; text-decoration:none;">Admin</a>
+</nav>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    #header {
+        background: #1a1a2e;
+    }
+    #branding h1 a {
+        color: #ffffff;
+    }
+</style>
+{% endblock %}

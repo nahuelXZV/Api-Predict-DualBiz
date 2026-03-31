@@ -3,7 +3,7 @@ from typing import Any
 
 @dataclass
 class PredictRequestDTO():
-    model_name:  str  = "knn"
+    model_name:  str  = "pedido_sugerido"
     hyperparams: dict[str, Any] = field(default_factory=dict)
 
 

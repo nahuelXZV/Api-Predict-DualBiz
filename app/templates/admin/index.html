@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>Panel de administración</h1>
+
+<div style="display:flex; gap:24px; margin-top:16px;">
+
+    {% if app_list %}
+        <div style="flex:2;">
+            {% for app in app_list %}
+            <div style="margin-bottom:24px; border:1px solid #444; border-radius:6px; padding:16px;">
+                <h2 style="margin:0 0 12px;">{{ app.name }}</h2>
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding:6px;">Modelo</th>
+                            <th style="padding:6px;">Agregar</th>
+                            <th style="padding:6px;">Ver</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for model in app.models %}
+                        <tr style="border-top:1px solid #333;">
+                            <td style="padding:6px;">{{ model.name }}</td>
+                            <td style="text-align:center; padding:6px;">
+                                {% if model.add_url %}
+                                    <a href="{{ model.add_url }}">+ Agregar</a>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td style="text-align:center; padding:6px;">
+                                {% if model.admin_url %}
+                                    <a href="{{ model.admin_url }}">Ver</a>
+                                {% else %}—{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>{% trans "No models registered." %}</p>
+    {% endif %}
+
+    <div style="flex:1;">
+        {% block sidebar %}{{ block.super }}{% endblock %}
+    </div>
+
+</div>
+{% endblock %}

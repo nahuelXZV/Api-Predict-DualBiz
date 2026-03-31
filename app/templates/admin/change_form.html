@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block content_title %}
+<h1>
+    {% if add %}
+        {% trans "Agregar" %} {{ opts.verbose_name }}
+    {% else %}
+        {% trans "Editar" %} {{ opts.verbose_name }}: <strong>{{ original }}</strong>
+    {% endif %}
+</h1>
+{% endblock %}

@@ -1,8 +1,8 @@
 from __future__ import annotations
 from app.domain.core.exceptions import ModelNotFoundError
 from app.domain.core.logging import logger
-from app.domain.dtos.model_metadata_dto import ModelMetadataDTO
 from app.domain.dtos.training_dto import TrainResponseDTO
+from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.base_context import TrainingContext
 from app.ml.training.pedido_sugerido.pipeline import build_pedido_sugerido_pipeline
@@ -65,7 +65,7 @@ class ModelManager:
             }
             return response_error
 
-    def list_models(self) -> list[ModelMetadataDTO]:
+    def list_models(self) -> list[ModelMetadata]:
         return model_registry.list_models()
 
 
