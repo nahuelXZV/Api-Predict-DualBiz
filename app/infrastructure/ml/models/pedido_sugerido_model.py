@@ -4,7 +4,7 @@ from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.base_context import PredictContext
 from app.domain.ml.base_model import BaseMLModel
 from app.domain.ml.model_metadata import ModelMetadata
-from app.ml.predict.pedido_sugerido.pipeline import predict_pedido_sugerido_pipeline
+from app.infrastructure.ml.predict.pedido_sugerido.pipeline import predict_pedido_sugerido_pipeline
 
 
 class PedidoSugeridoModel(BaseMLModel):
@@ -18,7 +18,7 @@ class PedidoSugeridoModel(BaseMLModel):
     def predict(self, data: dict) -> dict:
         if self._model is None:
             raise ModelNotLoadedError(self.metadata.name)
-        
+
         ctx = PredictContext(
             model_name=self.metadata.name,
             version=self.metadata.version,

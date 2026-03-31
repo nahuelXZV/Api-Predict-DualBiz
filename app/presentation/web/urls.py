@@ -1,5 +1,5 @@
 from django.urls import path
-from app.controllers.web.views import HomeView, ModelsView
+from app.presentation.web.views import HomeView, ModelsView
 
 urlpatterns = [
     path("", HomeView.as_view(), name="home"),

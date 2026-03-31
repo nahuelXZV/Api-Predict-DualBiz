@@ -1,5 +1,5 @@
 from app.domain.ml.base_pipeline import BasePipeline
-from app.ml.predict.pedido_sugerido.steps import (
+from app.infrastructure.ml.predict.pedido_sugerido.steps import (
     AprioriBuildCandidatesStep,
     AprioriRankAndPredictStep,
     BuildResponseStep,

@@ -18,8 +18,8 @@ from app.domain.ml.base_step import BaseStep
 from app.domain.ml.base_context import TrainingContext
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
-from app.ml.models.pedido_sugerido_model import PedidoSugeridoModel
-from app.ml.training.pedido_sugerido.utils import (
+from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_xgb,
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,

@@ -3,8 +3,8 @@ from typing import cast
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
-from app.controllers.api.responses import success_response
-from app.controllers.api.v1.endpoints.serializers import TrainRequestSerializer, TrainResponseSerializer
+from app.presentation.api.responses import success_response
+from app.presentation.api.v1.endpoints.serializers import TrainRequestSerializer, TrainResponseSerializer
 from app.application.services.training_service import TrainingService
 
 

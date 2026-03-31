@@ -1,5 +1,5 @@
 from app.domain.ml.base_pipeline import BasePipeline
-from app.ml.training.pedido_sugerido.steps import (
+from app.infrastructure.ml.training.pedido_sugerido.steps import (
     CalculoAtributosDerivadosStep,
     ClusteringKMeansStep,
     ConjuntoReglasAprioriStep,

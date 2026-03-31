@@ -1,8 +1,8 @@
 from django.urls import path
-from app.controllers.api.v1.endpoints.health import HealthView
-from app.controllers.api.v1.endpoints.predict import PredictView
-from app.controllers.api.v1.endpoints.training import TrainingView
-from app.controllers.api.v1.endpoints.models import ModelsView
+from app.presentation.api.v1.endpoints.health import HealthView
+from app.presentation.api.v1.endpoints.predict import PredictView
+from app.presentation.api.v1.endpoints.training import TrainingView
+from app.presentation.api.v1.endpoints.models import ModelsView
 
 urlpatterns = [
     path("", HealthView.as_view(), name="health"),

@@ -4,7 +4,7 @@ import numpy as np
 from app.domain.core.logging import logger
 from app.domain.ml.base_context import PredictContext
 from app.domain.ml.base_step import BaseStep
-from app.ml.predict.pedido_sugerido.utils import apply_pareto, build_features_candidatos
+from app.infrastructure.ml.predict.pedido_sugerido.utils import apply_pareto, build_features_candidatos
 
 CANTIDAD_MINIMA = 1.0
 TOP_N = 50

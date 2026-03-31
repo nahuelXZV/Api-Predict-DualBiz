@@ -4,11 +4,11 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 
 urlpatterns = [
     # Web (HTML)
-    path("", include("app.controllers.web.urls")),
+    path("", include("app.presentation.web.urls")),
     # Admin Django
     path("admin/", admin.site.urls),
     # API REST v1
-    path("api/v1/", include("app.controllers.api.v1.urls")),
+    path("api/v1/", include("app.presentation.api.v1.urls")),
     # Swagger / OpenAPI
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
