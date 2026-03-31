@@ -4,6 +4,7 @@ import pandas as pd
 
 import xgboost as xgb
 from pathlib import Path
+from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -20,6 +21,7 @@ from app.domain.ml.model_registry import model_registry
 from app.ml.models.pedido_sugerido_model import PedidoSugeridoModel
 from app.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_xgb,
+    calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
     calcular_nro_vecinos_knn,
     calcular_params_apriori,
@@ -44,6 +46,10 @@ XGB_FEATURES = [
     "dia_semana",  # estacionalidad
     "mes",  # estacionalidad
     "segmento",  # cluster al que pertenece el cliente
+    "num_productos_distintos",  # variedad de productos que compra el cliente
+    "importe_total_cliente",  # volumen total comprado por el cliente
+    "frecuencia_promedio_cliente",  # frecuencia promedio entre compras del cliente
+    "cantidad_productos_comprados",  # cantidad total de productos comprados por el cliente
 ]
 
 XGB_CANTIDAD_TARGET = "cantidad_vendida"
@@ -108,7 +114,9 @@ class EdaCleanDataStep(BaseStep[TrainingContext]):
         antes = len(df)
         df = df.dropna(subset=["cliente_id", "nombre_producto", "cantidad_vendida"])
         eliminadas = antes - len(df)
-        logger.info("limpieza_completada", filas_eliminadas=eliminadas, filas_utiles=len(df))
+        logger.info(
+            "limpieza_completada", filas_eliminadas=eliminadas, filas_utiles=len(df)
+        )
         if eliminadas > 0:
             logger.warning("filas_con_nulos_eliminadas", cantidad=eliminadas)
 
@@ -165,6 +173,15 @@ class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
         # Estacionalidad
         df["dia_semana"] = df["fecha_venta"].dt.dayofweek
         df["mes"] = df["fecha_venta"].dt.month
+
+        # productos distintos
+        df["num_productos_distintos"] = grp["nombre_producto"].transform("nunique")
+        # importe total cliente
+        df["importe_total_cliente"] = grp["cantidad_vendida"].transform("sum")
+        # frecuencia promedio entre dias de compras
+        df["frecuencia_promedio_cliente"] = grp["dias_entre_compras"].transform("mean")
+        # cantidad diferente de productos comprados
+        df["cantidad_productos_comprados"] = grp["nombre_producto"].transform("count")
 
         ctx.clean_data = df
         logger.info("features_derivadas_calculadas", n_columnas=len(df.columns))
@@ -465,6 +482,16 @@ class PrepareDataXGBStep(BaseStep[TrainingContext]):
                 zona_id=("zona_id", "first"),
                 sucursal=("sucursal", "first"),
                 segmento=("segmento", "first"),
+                num_productos_distintos=("num_productos_distintos", "first"),
+                importe_total_cliente=("importe_total_cliente", "first"),
+                frecuencia_promedio_cliente=(
+                    "frecuencia_promedio_cliente",
+                    "first",
+                ),
+                cantidad_productos_comprados=(
+                    "cantidad_productos_comprados",
+                    "first",
+                ),
             )
             .reset_index()
         )
@@ -525,6 +552,54 @@ class EnsembleArbolesXGBoostStep(BaseStep[TrainingContext]):
         return ctx
 
 
+class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
+    """
+    Entrena un RandomForestRegressor para predecir la cantidad sugerida de un
+    producto para un cliente (target: cantidad_vendida promedio por transacción).
+
+    Las features categóricas se codifican con OrdinalEncoder antes del
+    entrenamiento. Valores desconocidos se mapean a -1.
+
+    Artefacto guardado en ctx.extra["model_rf_cantidad"]:
+        - model: RandomForestRegressor entrenado
+        - encoder: OrdinalEncoder fitteado sobre CAT_FEATURES
+        - features: lista de features usadas (XGB_FEATURES)
+    """
+
+    def execute(self, ctx: TrainingContext) -> TrainingContext:
+        data_xgb_df = ctx.extra.get("data_xgb_df")
+        if data_xgb_df is None:
+            ctx.errors.append("EnsembleArbolesRandomForestStep: data_xgb_df es None.")
+            return ctx
+
+        X = data_xgb_df[XGB_FEATURES].copy()
+        y = data_xgb_df[XGB_CANTIDAD_TARGET].fillna(0)
+
+        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
+
+        config_rf = calcular_mejores_params_rf(X, y)
+        model = RandomForestRegressor(
+            n_estimators=config_rf["n_estimators"],
+            max_depth=config_rf["max_depth"],
+            max_features=config_rf["max_features"],
+            min_samples_split=config_rf["min_samples_split"],
+            min_samples_leaf=config_rf["min_samples_leaf"],
+            random_state=42,
+            n_jobs=-1,
+        )
+        logger.info("rf_entrenando", muestras=len(X))
+        model.fit(X, y)
+        logger.info("rf_entrenado", muestras=len(X))
+
+        ctx.extra["model_rf_cantidad"] = {
+            "model": model,
+            "encoder": enc,
+            "features": XGB_FEATURES,
+        }
+        return ctx
+
+
 class SaveModelStep(BaseStep[TrainingContext]):
     """
     Serializa todos los artefactos del pipeline en un único archivo .pkl
@@ -547,7 +622,8 @@ class SaveModelStep(BaseStep[TrainingContext]):
             "model_km": ctx.extra["model_km"],
             "model_knn": ctx.extra["model_knn"],
             "model_apriori": ctx.extra["model_apriori"],
-            "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
+            # "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
+            "model_rf_cantidad": ctx.extra["model_rf_cantidad"],
             "perfil_productos": ctx.clean_data,
         }
 
@@ -556,7 +632,12 @@ class SaveModelStep(BaseStep[TrainingContext]):
         joblib.dump({"artefactos": artefactos}, str(path_model))
 
         ctx.extra["path_model"] = path_model
-        logger.info("modelo_guardado", path=str(path_model), modelo=ctx.model_name, version=ctx.version)
+        logger.info(
+            "modelo_guardado",
+            path=str(path_model),
+            modelo=ctx.model_name,
+            version=ctx.version,
+        )
         return ctx
 
 

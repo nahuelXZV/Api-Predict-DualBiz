@@ -3,6 +3,7 @@ import pandas as pd
 import xgboost as xgb
 from app.domain.core.logging import logger
 from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import NearestNeighbors
 from sklearn.model_selection import RandomizedSearchCV
@@ -137,6 +138,53 @@ def calcular_mejores_params_xgb(
     search.fit(X, y)
 
     logger.info("xgb_params_optimos", params=search.best_params_, rmse_cv=round(-search.best_score_, 4))
+    return search.best_params_
+
+
+def calcular_mejores_params_rf(
+    X: pd.DataFrame,
+    y: pd.Series,
+    n_iter: int = 30,
+    cv: int = 3,
+    random_state: int = 42,
+) -> dict:
+    """
+    Busca los mejores hiperparámetros para RandomForestRegressor usando
+    búsqueda aleatoria con validación cruzada (RandomizedSearchCV).
+
+    Args:
+        X: DataFrame de features ya codificadas (sin valores nulos).
+        y: Serie con el target (cantidad_vendida).
+        n_iter: Número de combinaciones aleatorias a evaluar (default 30).
+        cv: Número de folds para la validación cruzada (default 3).
+        random_state: Semilla para reproducibilidad (default 42).
+
+    Returns:
+        dict: Mejores hiperparámetros encontrados, listos para pasar
+              directamente a RandomForestRegressor(**resultado).
+    """
+    param_space = {
+        "n_estimators": [100, 200, 300, 500],
+        "max_depth": [None, 5, 10, 15, 20],
+        "max_features": ["sqrt", "log2", 0.5, 0.8],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
+    }
+
+    model = RandomForestRegressor(random_state=random_state, n_jobs=-1)
+
+    search = RandomizedSearchCV(
+        estimator=model,
+        param_distributions=param_space,
+        n_iter=n_iter,
+        scoring="neg_root_mean_squared_error",
+        cv=cv,
+        random_state=random_state,
+        n_jobs=-1,
+    )
+    search.fit(X, y)
+
+    logger.info("rf_params_optimos", params=search.best_params_, rmse_cv=round(-search.best_score_, 4))
     return search.best_params_
 
 
