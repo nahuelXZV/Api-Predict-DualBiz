@@ -5,7 +5,7 @@ from app.domain.dtos.training_dto import TrainResponseDTO
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.base_context import TrainingContext
-from app.ml.training.pedido_sugerido.pipeline import build_pedido_sugerido_pipeline
+from app.infrastructure.ml.training.pedido_sugerido.pipeline import build_pedido_sugerido_pipeline
 
 
 def _get_train_pipelines() -> dict:

@@ -4,7 +4,7 @@ from app.domain.core.config import settings
 from app.domain.core.logging import logger
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
-from app.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
 
 _MODELS_TO_LOAD = [
     "pedido_sugerido",

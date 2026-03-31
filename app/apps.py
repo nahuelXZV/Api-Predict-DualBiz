@@ -7,7 +7,7 @@ class AppConfig(DjangoAppConfig):
 
     def ready(self):
         from app.domain.core.logging import setup_logging, logger
-        from app.ml.load_models import load_initial_models
+        from app.infrastructure.ml.load_models import load_initial_models
         from app.domain.core.config import settings
 
         setup_logging()

@@ -39,7 +39,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "app" / "templates"],
+        "DIRS": [BASE_DIR / "app" / "presentation" / "web" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -79,7 +79,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
-    "EXCEPTION_HANDLER": "app.controllers.api.exception_handler.api_exception_handler",
+    "EXCEPTION_HANDLER": "app.presentation.api.exception_handler.api_exception_handler",
 }
 
 # --- drf-spectacular (Swagger) ---

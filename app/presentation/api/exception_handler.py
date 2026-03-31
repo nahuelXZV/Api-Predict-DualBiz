@@ -2,7 +2,7 @@ from rest_framework.views import exception_handler
 from rest_framework import status
 
 from app.domain.core.logging import logger
-from app.controllers.api.responses import error_response
+from app.presentation.api.responses import error_response
 
 
 def api_exception_handler(exc, context):
