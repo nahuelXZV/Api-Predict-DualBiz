@@ -2,7 +2,6 @@ import joblib
 import numpy as np
 import pandas as pd
 
-import xgboost as xgb
 from pathlib import Path
 from sklearn.ensemble import RandomForestRegressor
 
@@ -20,7 +19,6 @@ from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
 from app.infrastructure.ml.training.pedido_sugerido.utils import (
-    calcular_mejores_params_xgb,
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
     calcular_nro_vecinos_knn,
@@ -31,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parents[4]
 DATA_PATH = BASE_DIR / "storage" / "data" / "consulta_base.csv"
 MODEL_PATH_BASE = BASE_DIR / "storage" / "models"
 
-XGB_FEATURES = [
+RF_FEATURES = [
     "nombre_producto",  # categorica → OrdinalEncoder
     "marca",  # categorica
     "linea_producto",  # categorica
@@ -52,7 +50,7 @@ XGB_FEATURES = [
     "cantidad_productos_comprados",  # cantidad total de productos comprados por el cliente
 ]
 
-XGB_CANTIDAD_TARGET = "cantidad_vendida"
+RF_CANTIDAD_TARGET = "cantidad_vendida"
 
 CAT_FEATURES = [
     "nombre_producto",
@@ -174,14 +172,21 @@ class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
         df["dia_semana"] = df["fecha_venta"].dt.dayofweek
         df["mes"] = df["fecha_venta"].dt.month
 
+        grp_cliente = df.groupby("cliente_id")
         # productos distintos
-        df["num_productos_distintos"] = grp["nombre_producto"].transform("nunique")
+        df["num_productos_distintos"] = grp_cliente["nombre_producto"].transform(
+            "nunique"
+        )
         # importe total cliente
-        df["importe_total_cliente"] = grp["cantidad_vendida"].transform("sum")
+        df["importe_total_cliente"] = grp_cliente["cantidad_vendida"].transform("sum")
         # frecuencia promedio entre dias de compras
-        df["frecuencia_promedio_cliente"] = grp["dias_entre_compras"].transform("mean")
+        df["frecuencia_promedio_cliente"] = grp_cliente["dias_entre_compras"].transform(
+            "mean"
+        )
         # cantidad diferente de productos comprados
-        df["cantidad_productos_comprados"] = grp["nombre_producto"].transform("count")
+        df["cantidad_productos_comprados"] = grp_cliente["nombre_producto"].transform(
+            "count"
+        )
 
         ctx.clean_data = df
         logger.info("features_derivadas_calculadas", n_columnas=len(df.columns))
@@ -502,56 +507,6 @@ class PrepareDataArbolesStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class EnsembleArbolesXGBoostStep(BaseStep[TrainingContext]):
-    """
-    Entrena un XGBRegressor para predecir la cantidad sugerida de un producto
-    para un cliente (target: cantidad_vendida promedio por transacción).
-
-    Las features categóricas se codifican con OrdinalEncoder antes del
-    entrenamiento. Valores desconocidos se mapean a -1.
-
-    Artefacto guardado en ctx.extra["model_xgb_cantidad"]:
-        - model: XGBRegressor entrenado
-        - encoder: OrdinalEncoder fitteado sobre CAT_FEATURES
-        - features: lista de features usadas (XGB_FEATURES)
-    """
-
-    def execute(self, ctx: TrainingContext) -> TrainingContext:
-        data_xgb_df = ctx.extra.get("data_xgb_df")
-        if data_xgb_df is None:
-            ctx.errors.append("EnsembleArbolesXGBoostStep: data_xgb_df es None.")
-            return ctx
-
-        X = data_xgb_df[XGB_FEATURES].copy()
-        y = data_xgb_df[XGB_CANTIDAD_TARGET].fillna(0)
-
-        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-        X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
-
-        config_xgb = calcular_mejores_params_xgb(X, y)
-        model = xgb.XGBRegressor(
-            n_estimators=config_xgb["n_estimators"],
-            learning_rate=config_xgb["learning_rate"],
-            max_depth=config_xgb["max_depth"],
-            subsample=config_xgb["subsample"],
-            colsample_bytree=config_xgb["colsample_bytree"],
-            min_child_weight=config_xgb["min_child_weight"],
-            gamma=config_xgb["gamma"],
-            random_state=42,
-            verbosity=0,
-        )
-        logger.info("xgb_entrenando", muestras=len(X))
-        model.fit(X, y)
-        logger.info("xgb_entrenado", muestras=len(X))
-        model_xgb_cantidad = {
-            "model": model,
-            "encoder": enc,
-            "features": XGB_FEATURES,
-        }
-        ctx.extra["model_xgb_cantidad"] = model_xgb_cantidad
-        return ctx
-
-
 class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
     """
     Entrena un RandomForestRegressor para predecir la cantidad sugerida de un
@@ -563,7 +518,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
     Artefacto guardado en ctx.extra["model_rf_cantidad"]:
         - model: RandomForestRegressor entrenado
         - encoder: OrdinalEncoder fitteado sobre CAT_FEATURES
-        - features: lista de features usadas (XGB_FEATURES)
+        - features: lista de features usadas (RF_FEATURES)
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -572,8 +527,8 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
             ctx.errors.append("EnsembleArbolesRandomForestStep: data_xgb_df es None.")
             return ctx
 
-        X = data_xgb_df[XGB_FEATURES].copy()
-        y = data_xgb_df[XGB_CANTIDAD_TARGET].fillna(0)
+        X = data_xgb_df[RF_FEATURES].copy()
+        y = data_xgb_df[RF_CANTIDAD_TARGET].fillna(0)
 
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
@@ -595,7 +550,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
         ctx.extra["model_rf_cantidad"] = {
             "model": model,
             "encoder": enc,
-            "features": XGB_FEATURES,
+            "features": RF_FEATURES,
         }
         return ctx
 
@@ -608,7 +563,7 @@ class SaveModelStep(BaseStep[TrainingContext]):
 
         - model_km: segmentación KMeans (no usada en predicción actualmente)
         - model_knn: vecinos cercanos con scaler, encoder y perfil de clientes
-        - model_xgb_cantidad: regresor de cantidad con encoder y features
+        - model_rf_cantidad: regresor de cantidad con encoder y features
         - perfil_productos: historial completo de transacciones, usado en
           predicción para construir features de productos candidatos
     """
@@ -622,7 +577,6 @@ class SaveModelStep(BaseStep[TrainingContext]):
             "model_km": ctx.extra["model_km"],
             "model_knn": ctx.extra["model_knn"],
             "model_apriori": ctx.extra["model_apriori"],
-            # "model_xgb_cantidad": ctx.extra["model_xgb_cantidad"],
             "model_rf_cantidad": ctx.extra["model_rf_cantidad"],
             "perfil_productos": ctx.clean_data,
         }
