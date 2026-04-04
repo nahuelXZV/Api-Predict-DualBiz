@@ -3,9 +3,10 @@ from typing import Any
 
 @dataclass
 class TrainRequestDTO():
-    model_name:  str  = "pedido_sugerido"
-    version:     str  = "1.0"
-    hyperparams: dict[str, Any] = field(default_factory=dict)
+    model_name:        str  = "pedido_sugerido"
+    version:           str  = "1.0"
+    hyperparams:       dict[str, Any] = field(default_factory=dict)
+    data_source_config: dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class TrainResponseDTO():

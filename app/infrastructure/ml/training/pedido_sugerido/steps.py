@@ -15,9 +15,11 @@ from mlxtend.preprocessing import TransactionEncoder
 from app.domain.core.logging import logger
 from app.domain.ml.base_step import BaseStep
 from app.domain.ml.base_context import TrainingContext
+from app.domain.ml.data_source import DataSource
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.domain.ml.training_params import SearchCVConfig
 from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
@@ -26,7 +28,6 @@ from app.infrastructure.ml.training.pedido_sugerido.utils import (
 )
 
 BASE_DIR = Path(__file__).resolve().parents[4]
-DATA_PATH = BASE_DIR / "storage" / "data" / "consulta_base.csv"
 MODEL_PATH_BASE = BASE_DIR / "storage" / "models"
 
 RF_FEATURES = [
@@ -63,15 +64,16 @@ CAT_FEATURES = [
 
 class LoadDataStep(BaseStep[TrainingContext]):
     """
-    Carga el dataset crudo desde el CSV de ventas.
+    Carga el dataset crudo usando el DataSource inyectado.
+    Puede ser SqlServerDataSource, ExcelDataSource, etc.
     Resultado: ctx.raw_data con todas las filas y columnas originales.
     """
 
+    def __init__(self, data_source: DataSource) -> None:
+        self._data_source = data_source
+
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        logger.info("dataset_cargado", path=str(DATA_PATH))
-        df = pd.read_csv(DATA_PATH)
-        logger.info("dataset_leido", filas=len(df), columnas=df.shape[1])
-        ctx.raw_data = df
+        ctx.raw_data = self._data_source.load()
         return ctx
 
 
@@ -110,7 +112,9 @@ class EdaCleanDataStep(BaseStep[TrainingContext]):
         )
 
         antes = len(df)
-        df = df.dropna(subset=["cliente_id", "nombre_producto", "cantidad_vendida"])
+        df = df.dropna(
+            subset=["cliente_id", "nombre_producto", "cantidad_vendida", "fecha_venta"]
+        )
         eliminadas = antes - len(df)
         logger.info(
             "limpieza_completada", filas_eliminadas=eliminadas, filas_utiles=len(df)
@@ -533,7 +537,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
 
-        config_rf = calcular_mejores_params_rf(X, y)
+        config_rf = calcular_mejores_params_rf(X, y, SearchCVConfig())
         model = RandomForestRegressor(
             n_estimators=config_rf["n_estimators"],
             max_depth=config_rf["max_depth"],

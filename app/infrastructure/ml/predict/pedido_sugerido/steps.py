@@ -4,7 +4,11 @@ import numpy as np
 from app.domain.core.logging import logger
 from app.domain.ml.base_context import PredictContext
 from app.domain.ml.base_step import BaseStep
-from app.infrastructure.ml.predict.pedido_sugerido.utils import apply_pareto, build_features_candidatos
+from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
+from app.infrastructure.ml.predict.pedido_sugerido.utils import (
+    apply_pareto,
+    build_features_candidatos,
+)
 
 CANTIDAD_MINIMA = 1.0
 TOP_N = 50
@@ -167,7 +171,7 @@ class KnnBuildCandidatesStep(BaseStep[PredictContext]):
         )
         candidatos_vecinos = prom_vecinos[prom_vecinos > 0].index.tolist()
 
-        solo_nuevos = ctx.parameters.get("solo_nuevos", True)
+        solo_nuevos = ctx.parameters.get("solo_nuevos", False)
         if solo_nuevos:
             cliente_id = ctx.parameters.get("cliente_id")
             productos_propios = set(
@@ -185,13 +189,13 @@ class KnnBuildCandidatesStep(BaseStep[PredictContext]):
             candidatos = candidatos_vecinos
             logger.info("knn_candidatos", total=len(candidatos), solo_nuevos=False)
 
-        df = build_features_candidatos(
+        df = build_features_candidatos(BuildFeaturesRequest(
             candidatos=candidatos,
             cliente_id=ctx.parameters.get("cliente_id"),
             perfil_productos=ctx.extra["perfil_productos"],
             segmento=ctx.extra["segmento"],
             fuente_nueva="vecinos",
-        )
+        ))
         ctx.extra["pct_vecinos"] = pct_vecinos
         ctx.extra["df_features_knn"] = df
         return ctx
@@ -295,7 +299,7 @@ class AprioriBuildCandidatesStep(BaseStep[PredictContext]):
         scores = mejores_reglas["score"]  # mismo orden de índice que antecedente_map
         antecedente_map = mejores_reglas["antecedent"]
 
-        solo_nuevos = ctx.parameters.get("solo_nuevos", True)
+        solo_nuevos = ctx.parameters.get("solo_nuevos", False)
         if solo_nuevos:
             mask = ~scores.index.isin(productos_cliente)
             scores = scores[mask]
@@ -303,13 +307,13 @@ class AprioriBuildCandidatesStep(BaseStep[PredictContext]):
 
         scores = scores.sort_values(ascending=False)  # ordenar DESPUÉS del filtro
 
-        df = build_features_candidatos(
+        df = build_features_candidatos(BuildFeaturesRequest(
             candidatos=scores.index.tolist(),
             cliente_id=ctx.parameters.get("cliente_id"),
             perfil_productos=ctx.extra["perfil_productos"],
             segmento=ctx.extra["segmento"],
             fuente_nueva="apriori",
-        )
+        ))
 
         ctx.extra["df_features_apriori"] = df
         ctx.extra["candidatos_apriori"] = scores.index.tolist()
@@ -399,17 +403,16 @@ class ParetoFilterStep(BaseStep[PredictContext]):
         porcentaje_raw = max(1, min(100, int(porcentaje_raw)))
         pareto_threshold = porcentaje_raw / 100
 
+        pareto_config = ParetoConfig(
+            top_n=top_n,
+            cantidad_minima=cantidad_minima,
+            porcentaje_volumen=pareto_threshold,
+        )
         ctx.extra["recomendaciones_knn_xgb"] = apply_pareto(
-            ctx.extra["recomendaciones_knn_xgb"],
-            top_n,
-            cantidad_minima,
-            pareto_threshold,
+            ctx.extra["recomendaciones_knn_xgb"], pareto_config
         )
         ctx.extra["recomendaciones_apriori_xgb"] = apply_pareto(
-            ctx.extra["recomendaciones_apriori_xgb"],
-            top_n,
-            cantidad_minima,
-            pareto_threshold,
+            ctx.extra["recomendaciones_apriori_xgb"], pareto_config
         )
         logger.info(
             "pareto_filter_aplicado",

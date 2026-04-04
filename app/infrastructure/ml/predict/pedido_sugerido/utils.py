@@ -1,9 +1,9 @@
 import pandas as pd
 
+from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
 
-def apply_pareto(
-    df: pd.DataFrame, top_n: int, cantidad_minima: float, porcentaje_volumen: float
-) -> pd.DataFrame:
+
+def apply_pareto(df: pd.DataFrame, config: ParetoConfig) -> pd.DataFrame:
     """
     Filtra un DataFrame de recomendaciones aplicando la ley de Pareto sobre
     cantidad_sugerida.
@@ -17,30 +17,22 @@ def apply_pareto(
 
     Args:
         df: DataFrame con al menos las columnas 'cantidad_sugerida'.
-        top_n: Número máximo de productos a retornar.
-        cantidad_minima: Umbral mínimo de cantidad_sugerida para incluir un producto.
-        porcentaje_volumen: Porcentaje del volumen total de cantidad_sugerida que se quiere cubrir.
+        config: ParetoConfig con top_n, cantidad_minima y porcentaje_volumen.
 
     Returns:
         DataFrame filtrado, ordenado por cantidad_sugerida descendente.
     """
-    df = df[df["cantidad_sugerida"] >= cantidad_minima].copy()
+    df = df[df["cantidad_sugerida"] >= config.cantidad_minima].copy()
     if df.empty:
         return df
     df = df.sort_values("cantidad_sugerida", ascending=False)
     total = df["cantidad_sugerida"].sum()
     cum_pct = df["cantidad_sugerida"].cumsum() / total
-    mask = cum_pct.shift(fill_value=0) < porcentaje_volumen
-    return df[mask].head(top_n)
+    mask = cum_pct.shift(fill_value=0) < config.porcentaje_volumen
+    return df[mask].head(config.top_n)
 
 
-def build_features_candidatos(
-    candidatos: list,
-    cliente_id,
-    perfil_productos: pd.DataFrame,
-    segmento: int,
-    fuente_nueva: str = "vecinos",
-) -> pd.DataFrame:
+def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
     """
     Construye el DataFrame de features para una lista de productos candidatos,
     en el formato que espera XGBRegressor.
@@ -52,26 +44,24 @@ def build_features_candidatos(
           globales del producto y los datos base del cliente como contexto.
 
     Args:
-        candidatos: Lista de nombres de producto a evaluar.
-        cliente_id: Identificador del cliente.
-        perfil_productos: DataFrame completo de transacciones del entrenamiento.
-        segmento: Segmento KMeans del cliente (feature para XGBRegressor).
-        fuente_nueva: Etiqueta de fuente para productos sin historial propio.
-                      "vecinos" para KNN, "apriori" para Apriori.
+        req: BuildFeaturesRequest con candidatos, cliente_id, perfil_productos,
+             segmento y fuente_nueva.
 
     Returns:
         DataFrame con una fila por candidato y todas las features requeridas.
     """
-    fecha_max = pd.to_datetime(perfil_productos["fecha_venta"]).max()
+    fecha_max = pd.to_datetime(req.perfil_productos["fecha_venta"]).max()
     mes_actual = fecha_max.month
 
-    historial_cliente = perfil_productos[perfil_productos["cliente_id"] == cliente_id]
+    historial_cliente = req.perfil_productos[req.perfil_productos["cliente_id"] == req.cliente_id]
+    if historial_cliente.empty:
+        return pd.DataFrame()
     ctx_base = historial_cliente.sort_values("fecha_venta").iloc[-1]
 
     filas = []
-    for producto in candidatos:
+    for producto in req.candidatos:
         hist_prod = historial_cliente[historial_cliente["nombre_producto"] == producto]
-        prod_info = perfil_productos[perfil_productos["nombre_producto"] == producto]
+        prod_info = req.perfil_productos[req.perfil_productos["nombre_producto"] == producto]
 
         if len(hist_prod) > 0:
             ultima = hist_prod.sort_values("fecha_venta").iloc[-1]
@@ -103,7 +93,7 @@ def build_features_candidatos(
                 if len(prod_info) > 0
                 else ctx_base["linea_producto"]
             )
-            fuente = fuente_nueva
+            fuente = req.fuente_nueva
             num_productos_distintos = int(prod_info["nombre_producto"].nunique()) if len(prod_info) > 0 else 0
             importe_total_cliente = float(prod_info["cantidad_vendida"].sum()) if len(prod_info) > 0 else 0.0
             frecuencia_promedio_cliente = float(prod_info["dias_entre_compras"].mean()) if len(prod_info) > 0 else 0.0
@@ -124,7 +114,7 @@ def build_features_candidatos(
                 "dias_desde_ultima_compra": dias_desde_ultima_compra,
                 "dia_semana": int(ctx_base["dia_semana"]),
                 "mes": mes_actual,
-                "segmento": segmento,
+                "segmento": req.segmento,
                 "num_productos_distintos": num_productos_distintos,
                 "importe_total_cliente": importe_total_cliente,
                 "frecuencia_promedio_cliente": frecuencia_promedio_cliente,
