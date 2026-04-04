@@ -33,7 +33,7 @@ class LoadModelStep(BaseStep[PredictContext]):
     Desempaqueta los artefactos del modelo cargado en memoria y los expone
     en ctx.extra para que los pasos siguientes puedan acceder a ellos:
         - model_knn: vecinos cercanos (incluye scaler, encoder, perfil de clientes)
-        - model_xgb_cantidad: regresor de cantidad (incluye encoder y features)
+        - model_rf_cantidad: regresor de cantidad (incluye encoder y features)
         - model_apriori: reglas de asociación entre productos
         - perfil_productos: historial completo de transacciones del entrenamiento
     """
@@ -41,7 +41,7 @@ class LoadModelStep(BaseStep[PredictContext]):
     def execute(self, ctx: PredictContext) -> PredictContext:
         art = ctx.model["artefactos"]
         ctx.extra["model_knn"] = art["model_knn"]
-        ctx.extra["model_xgb_cantidad"] = art["model_xgb_cantidad"]
+        ctx.extra["model_rf_cantidad"] = art["model_rf_cantidad"]
         ctx.extra["model_apriori"] = art["model_apriori"]
         ctx.extra["perfil_productos"] = art["perfil_productos"]
         return ctx
@@ -225,18 +225,18 @@ class KnnRankAndPredictStep(BaseStep[PredictContext]):
             logger.warning("knn_sin_candidatos")
             return ctx
 
-        model_xgb_cantidad = ctx.extra["model_xgb_cantidad"]
+        model_rf_cantidad = ctx.extra["model_rf_cantidad"]
         pct_vecinos = ctx.extra["pct_vecinos"]
-        features = model_xgb_cantidad["features"]
+        features = model_rf_cantidad["features"]
 
         df["score"] = df["nombre_producto"].map(pct_vecinos).fillna(0)
 
         df_cantidad = df.copy()
-        df_cantidad[CAT_FEATURES] = model_xgb_cantidad["encoder"].transform(
+        df_cantidad[CAT_FEATURES] = model_rf_cantidad["encoder"].transform(
             df_cantidad[CAT_FEATURES].fillna("DESCONOCIDO")
         )
         df["cantidad_sugerida"] = np.maximum(
-            model_xgb_cantidad["model"].predict(df_cantidad[features]), 0
+            model_rf_cantidad["model"].predict(df_cantidad[features]), 0
         ).round(2)
 
         recomendaciones = df[
@@ -345,20 +345,20 @@ class AprioriRankAndPredictStep(BaseStep[PredictContext]):
             )
             return ctx
 
-        model_xgb_cantidad = ctx.extra["model_xgb_cantidad"]
+        model_rf_cantidad = ctx.extra["model_rf_cantidad"]
         scores_apriori = ctx.extra["scores_apriori"]
         antecedente_map = ctx.extra["antecedente_apriori"]
-        features = model_xgb_cantidad["features"]
+        features = model_rf_cantidad["features"]
 
         df["score"] = df["nombre_producto"].map(scores_apriori).fillna(0)
         df["antecedente"] = df["nombre_producto"].map(antecedente_map)
 
         df_cantidad = df.copy()
-        df_cantidad[CAT_FEATURES] = model_xgb_cantidad["encoder"].transform(
+        df_cantidad[CAT_FEATURES] = model_rf_cantidad["encoder"].transform(
             df_cantidad[CAT_FEATURES].fillna("DESCONOCIDO")
         )
         df["cantidad_sugerida"] = np.maximum(
-            model_xgb_cantidad["model"].predict(df_cantidad[features]), 0
+            model_rf_cantidad["model"].predict(df_cantidad[features]), 0
         ).round(2)
 
         recomendaciones = df[
