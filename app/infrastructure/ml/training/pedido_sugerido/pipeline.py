@@ -1,11 +1,11 @@
 from app.domain.ml.base_pipeline import BasePipeline
+from app.domain.ml.data_source import DataSource
 from app.infrastructure.ml.training.pedido_sugerido.steps import (
     CalculoAtributosDerivadosStep,
     ClusteringKMeansStep,
     ConjuntoReglasAprioriStep,
     EdaCleanDataStep,
     EnsembleArbolesRandomForestStep,
-    # EnsembleArbolesXGBoostStep,
     LoadDataStep,
     PrepareDataArbolesStep,
     RegistryModelStep,
@@ -14,10 +14,10 @@ from app.infrastructure.ml.training.pedido_sugerido.steps import (
 )
 
 
-def build_pedido_sugerido_pipeline() -> BasePipeline:
+def build_pedido_sugerido_pipeline(data_source: DataSource) -> BasePipeline:
     pipeline = BasePipeline()
 
-    pipeline.add_step(LoadDataStep())
+    pipeline.add_step(LoadDataStep(data_source))
     pipeline.add_step(EdaCleanDataStep())
     pipeline.add_step(CalculoAtributosDerivadosStep())
     pipeline.add_step(ClusteringKMeansStep())
