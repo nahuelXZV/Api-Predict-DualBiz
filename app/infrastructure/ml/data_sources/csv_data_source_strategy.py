@@ -1,10 +1,11 @@
 import pandas as pd
 
+from app.domain.core.config import settings
 from app.domain.core.logging import logger
-from app.domain.ml.data_source import DataSource
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
 
 
-class CsvDataSource(DataSource):
+class CsvDataSourceStrategy(DataSourceABC):
     """
     Obtiene datos desde un archivo CSV.
     Útil para desarrollo local, testing, o cuando el cliente
@@ -27,6 +28,7 @@ class CsvDataSource(DataSource):
         logger.info(
             "csv_datasource_cargando", path=self._path, separator=self._separator
         )
-        df = pd.read_csv(self._path, sep=self._separator, encoding=self._encoding)
+        path_completo = settings.path_data + self._path
+        df = pd.read_csv(path_completo, sep=self._separator, encoding=self._encoding)
         logger.info("csv_datasource_cargado", filas=len(df), columnas=df.shape[1])
         return df

@@ -1,5 +1,6 @@
-from app.domain.ml.base_pipeline import BasePipeline
-from app.domain.ml.data_source import DataSource
+from app.domain.ml.abstractions.pipeline_base import PipelineBase
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
+from app.infrastructure.ml.pipeline_registry import register_pipeline
 from app.infrastructure.ml.training.pedido_sugerido.steps import (
     CalculoAtributosDerivadosStep,
     ClusteringKMeansStep,
@@ -14,19 +15,17 @@ from app.infrastructure.ml.training.pedido_sugerido.steps import (
 )
 
 
-def build_pedido_sugerido_pipeline(data_source: DataSource) -> BasePipeline:
-    pipeline = BasePipeline()
-
-    pipeline.add_step(LoadDataStep(data_source))
-    pipeline.add_step(EdaCleanDataStep())
-    pipeline.add_step(CalculoAtributosDerivadosStep())
-    pipeline.add_step(ClusteringKMeansStep())
-    pipeline.add_step(VecinosCercanosKnnStep())
-    pipeline.add_step(ConjuntoReglasAprioriStep())
-    pipeline.add_step(PrepareDataArbolesStep())
-    # pipeline.add_step(EnsembleArbolesXGBoostStep())
-    pipeline.add_step(EnsembleArbolesRandomForestStep())
-    pipeline.add_step(SaveModelStep())
-    pipeline.add_step(RegistryModelStep())
-
-    return pipeline
+@register_pipeline("pedido_sugerido")
+class PedidoSugeridoPipeline(PipelineBase):
+    def __init__(self, data_source: DataSourceABC) -> None:
+        super().__init__()
+        self.add_step(LoadDataStep(data_source))
+        self.add_step(EdaCleanDataStep())
+        self.add_step(CalculoAtributosDerivadosStep())
+        self.add_step(ClusteringKMeansStep())
+        self.add_step(VecinosCercanosKnnStep())
+        self.add_step(ConjuntoReglasAprioriStep())
+        self.add_step(PrepareDataArbolesStep())
+        self.add_step(EnsembleArbolesRandomForestStep())
+        self.add_step(SaveModelStep())
+        self.add_step(RegistryModelStep())

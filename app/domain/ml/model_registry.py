@@ -8,18 +8,18 @@ from app.domain.core.exceptions import (
     ModelNotFoundError,
     ModelNotReadyError,
 )
-from app.domain.ml.base_model import BaseMLModel
+from app.domain.ml.abstractions.ml_model_abc import MLModelABC
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.core.logging import logger
 
 
 class ModelRegistry:
     def __init__(self) -> None:
-        self._models: dict[str, BaseMLModel] = {}
+        self._models: dict[str, MLModelABC] = {}
         self._lock = threading.Lock()
 
     def register(
-        self, name: str, model: BaseMLModel, *, allow_override: bool = True
+        self, name: str, model: MLModelABC, *, allow_override: bool = True
     ) -> None:
         if not model.is_loaded:
             raise ValueError(
@@ -58,7 +58,7 @@ class ModelRegistry:
 
         logger.info("registry_cleared", removed=names)
 
-    def get(self, name: str) -> BaseMLModel:
+    def get(self, name: str) -> MLModelABC:
         model = self._models.get(name)
 
         if model is None:
@@ -69,7 +69,7 @@ class ModelRegistry:
 
         return model
 
-    def get_or_none(self, name: str) -> BaseMLModel | None:
+    def get_or_none(self, name: str) -> MLModelABC | None:
         return self._models.get(name)
 
     def exists(self, name: str) -> bool:
@@ -81,7 +81,7 @@ class ModelRegistry:
 
         return [model.metadata for name, model in snapshot]
 
-    def __iter__(self) -> Iterator[tuple[str, BaseMLModel]]:
+    def __iter__(self) -> Iterator[tuple[str, MLModelABC]]:
         with self._lock:
             items = list(self._models.items())
         return iter(items)

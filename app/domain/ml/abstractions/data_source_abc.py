@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import pandas as pd
 
 
-class DataSource(ABC):
+class DataSourceABC(ABC):
     @abstractmethod
-    def load(self) -> pd.DataFrame:
-        ...
+    def load(self) -> pd.DataFrame: ...

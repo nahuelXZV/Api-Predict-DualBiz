@@ -1,10 +1,11 @@
 import pandas as pd
+import pyodbc
 
 from app.domain.core.logging import logger
-from app.domain.ml.data_source import DataSource
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
 
 
-class SqlServerDataSource(DataSource):
+class SqlServerDataSourceStrategy(DataSourceABC):
     """
     Obtiene datos desde SQL Server ejecutando una query cruda con pyodbc.
     Usa pd.read_sql() directamente sobre la conexión — sin ORM — para
@@ -22,11 +23,6 @@ class SqlServerDataSource(DataSource):
         self._query = query
 
     def load(self) -> pd.DataFrame:
-        try:
-            import pyodbc
-        except ImportError:
-            raise ImportError("pyodbc no está instalado. Ejecutá: pip install pyodbc")
-
         logger.info("sqlserver_datasource_conectando")
         with pyodbc.connect(self._connection_string) as conn:
             df = pd.read_sql(self._query, conn)

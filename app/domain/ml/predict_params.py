@@ -13,7 +13,7 @@ class ParetoConfig:
 
 @dataclass
 class BuildFeaturesRequest:
-    candidatos: list
+    candidatos: list[str]
     cliente_id: Any
     perfil_productos: pd.DataFrame
     segmento: int

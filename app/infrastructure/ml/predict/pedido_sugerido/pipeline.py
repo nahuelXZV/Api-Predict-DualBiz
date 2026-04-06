@@ -1,4 +1,4 @@
-from app.domain.ml.base_pipeline import BasePipeline
+from app.domain.ml.abstractions.pipeline_base import PipelineBase
 from app.infrastructure.ml.predict.pedido_sugerido.steps import (
     AprioriBuildCandidatesStep,
     AprioriRankAndPredictStep,
@@ -13,8 +13,8 @@ from app.infrastructure.ml.predict.pedido_sugerido.steps import (
 )
 
 
-def predict_pedido_sugerido_pipeline() -> BasePipeline:
-    pipeline = BasePipeline()
+def predict_pedido_sugerido_pipeline() -> PipelineBase:
+    pipeline = PipelineBase()
     pipeline.add_step(LoadModelStep())
     pipeline.add_step(ValidateClienteStep())
 

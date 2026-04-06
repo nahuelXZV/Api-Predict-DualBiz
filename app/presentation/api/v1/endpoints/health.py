@@ -7,7 +7,9 @@ class HealthView(APIView):
     @extend_schema(
         tags=["health"],
         summary="Health check",
-        responses={200: {"type": "object", "properties": {"status": {"type": "string"}}}},
+        responses={
+            200: {"type": "object", "properties": {"status": {"type": "string"}}}
+        },
     )
     def get(self, request):
         return Response({"status": "ok"})

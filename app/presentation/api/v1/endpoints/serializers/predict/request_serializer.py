@@ -4,14 +4,18 @@ from rest_framework import serializers
 class PredictParametersSerializer(serializers.Serializer):
     cliente_id = serializers.IntegerField(
         default=14111,
+        min_value=1,
         help_text="ID del cliente para el que se generan las sugerencias.",
     )
     cantidad_minima = serializers.FloatField(
         default=1.0,
+        min_value=0.0,
         help_text="Cantidad mínima a sugerir por producto.",
     )
     top_n = serializers.IntegerField(
         default=50,
+        min_value=1,
+        max_value=1000,
         help_text="Número máximo de productos a retornar.",
     )
     solo_nuevos = serializers.BooleanField(
