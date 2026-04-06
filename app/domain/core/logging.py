@@ -28,7 +28,8 @@ def setup_logging() -> None:
     console_formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.dev.ConsoleRenderer() if settings.app_debug
+            structlog.dev.ConsoleRenderer()
+            if settings.app_debug
             else structlog.processors.JSONRenderer(),
         ],
         foreign_pre_chain=_SHARED_PROCESSORS,
@@ -66,7 +67,8 @@ def setup_logging() -> None:
 
     # --- structlog enruta a través de stdlib ---
     structlog.configure(
-        processors=_SHARED_PROCESSORS + [
+        processors=_SHARED_PROCESSORS
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),

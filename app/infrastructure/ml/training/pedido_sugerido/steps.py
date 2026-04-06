@@ -13,11 +13,13 @@ from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
 from app.domain.core.logging import logger
-from app.domain.ml.base_step import BaseStep
-from app.domain.ml.base_context import TrainingContext
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
+from app.domain.ml.abstractions.step_abc import StepABC
+from app.domain.ml.pipeline_context import TrainingContext
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.domain.ml.training_params import SearchCVConfig
 from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
@@ -26,7 +28,6 @@ from app.infrastructure.ml.training.pedido_sugerido.utils import (
 )
 
 BASE_DIR = Path(__file__).resolve().parents[4]
-DATA_PATH = BASE_DIR / "storage" / "data" / "consulta_base.csv"
 MODEL_PATH_BASE = BASE_DIR / "storage" / "models"
 
 RF_FEATURES = [
@@ -61,21 +62,22 @@ CAT_FEATURES = [
 ]
 
 
-class LoadDataStep(BaseStep[TrainingContext]):
+class LoadDataStep(StepABC[TrainingContext]):
     """
-    Carga el dataset crudo desde el CSV de ventas.
+    Carga el dataset crudo usando el DataSource inyectado.
+    Puede ser SqlServerDataSource, ExcelDataSource, etc.
     Resultado: ctx.raw_data con todas las filas y columnas originales.
     """
 
+    def __init__(self, data_source: DataSourceABC) -> None:
+        self._data_source = data_source
+
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        logger.info("dataset_cargado", path=str(DATA_PATH))
-        df = pd.read_csv(DATA_PATH)
-        logger.info("dataset_leido", filas=len(df), columnas=df.shape[1])
-        ctx.raw_data = df
+        ctx.raw_data = self._data_source.load()
         return ctx
 
 
-class EdaCleanDataStep(BaseStep[TrainingContext]):
+class EdaCleanDataStep(StepABC[TrainingContext]):
     """
     Normaliza los nombres de columnas al formato snake_case interno y elimina
     filas con valores nulos en campos críticos (cliente_id, nombre_producto,
@@ -110,7 +112,9 @@ class EdaCleanDataStep(BaseStep[TrainingContext]):
         )
 
         antes = len(df)
-        df = df.dropna(subset=["cliente_id", "nombre_producto", "cantidad_vendida"])
+        df = df.dropna(
+            subset=["cliente_id", "nombre_producto", "cantidad_vendida", "fecha_venta"]
+        )
         eliminadas = antes - len(df)
         logger.info(
             "limpieza_completada", filas_eliminadas=eliminadas, filas_utiles=len(df)
@@ -122,7 +126,7 @@ class EdaCleanDataStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
+class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
     """
     Calcula features derivadas a nivel de transacción a partir del historial
     de ventas ordenado por cliente-producto-fecha:
@@ -193,7 +197,7 @@ class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class ClusteringKMeansStep(BaseStep[TrainingContext]):
+class ClusteringKMeansStep(StepABC[TrainingContext]):
     """
     Segmenta los clientes en grupos de comportamiento de compra usando KMeans.
     Cada cliente se resume en un vector con: cantidad promedio comprada,
@@ -267,7 +271,7 @@ class ClusteringKMeansStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
+class VecinosCercanosKnnStep(StepABC[TrainingContext]):
     """
     Construye el modelo de vecinos cercanos (KNN) para encontrar clientes
     similares en tiempo de predicción. Es independiente de KMeansStep.
@@ -374,7 +378,7 @@ class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
+class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
     """
     Genera reglas de asociación entre productos usando el algoritmo Apriori.
     Opera sobre el historial de transacciones agrupado por cliente: cada
@@ -448,7 +452,7 @@ class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class PrepareDataArbolesStep(BaseStep[TrainingContext]):
+class PrepareDataArbolesStep(StepABC[TrainingContext]):
     """
     Construye el DataFrame de entrenamiento para los modelos XGBoost,
     con una fila por par (cliente_id, nombre_producto).
@@ -507,7 +511,7 @@ class PrepareDataArbolesStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
+class EnsembleArbolesRandomForestStep(StepABC[TrainingContext]):
     """
     Entrena un RandomForestRegressor para predecir la cantidad sugerida de un
     producto para un cliente (target: cantidad_vendida promedio por transacción).
@@ -533,7 +537,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
 
-        config_rf = calcular_mejores_params_rf(X, y)
+        config_rf = calcular_mejores_params_rf(X, y, SearchCVConfig())
         model = RandomForestRegressor(
             n_estimators=config_rf["n_estimators"],
             max_depth=config_rf["max_depth"],
@@ -555,7 +559,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class SaveModelStep(BaseStep[TrainingContext]):
+class SaveModelStep(StepABC[TrainingContext]):
     """
     Serializa todos los artefactos del pipeline en un único archivo .pkl
     usando joblib. El archivo contiene un dict con la clave "artefactos"
@@ -595,7 +599,7 @@ class SaveModelStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class RegistryModelStep(BaseStep[TrainingContext]):
+class RegistryModelStep(StepABC[TrainingContext]):
     """
     Carga el modelo recién guardado desde disco y lo registra en el
     model_registry en memoria, dejándolo disponible para el pipeline

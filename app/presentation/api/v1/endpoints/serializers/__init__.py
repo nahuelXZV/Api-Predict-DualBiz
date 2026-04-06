@@ -1,25 +1,27 @@
-from app.presentation.api.v1.endpoints.serializers.predict_serializer import (
+from app.presentation.api.v1.endpoints.serializers.predict.request_serializer import (
     PredictRequestSerializer,
     PredictParametersSerializer,
 )
-from app.presentation.api.v1.endpoints.serializers.train_serializer import (
-    TrainRequestSerializer,
-)
-from app.presentation.api.v1.endpoints.serializers.model_metadata_serializer import (
-    ModelMetadataSerializer,
-)
-from app.presentation.api.v1.endpoints.serializers.predict_response_serializer import (
+from app.presentation.api.v1.endpoints.serializers.predict.response_serializer import (
     PredictResponseSerializer,
 )
-from app.presentation.api.v1.endpoints.serializers.train_response_serializer import (
+from app.presentation.api.v1.endpoints.serializers.train.request_serializer import (
+    TrainRequestSerializer,
+    DataSourceSerializer,
+)
+from app.presentation.api.v1.endpoints.serializers.train.response_serializer import (
     TrainResponseSerializer,
+)
+from app.presentation.api.v1.endpoints.serializers.model.metadata_serializer import (
+    ModelMetadataSerializer,
 )
 
 __all__ = [
     "PredictRequestSerializer",
     "PredictParametersSerializer",
-    "TrainRequestSerializer",
-    "ModelMetadataSerializer",
     "PredictResponseSerializer",
+    "TrainRequestSerializer",
+    "DataSourceSerializer",
     "TrainResponseSerializer",
+    "ModelMetadataSerializer",
 ]

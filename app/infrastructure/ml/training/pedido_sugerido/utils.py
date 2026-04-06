@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from app.domain.core.logging import logger
+from app.domain.ml.training_params import SearchCVConfig
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import silhouette_score
@@ -88,9 +89,7 @@ def calcular_nro_vecinos_knn(data: np.ndarray, k_min: int = 3, k_max: int = 51) 
 def calcular_mejores_params_xgb(
     X: pd.DataFrame,
     y: pd.Series,
-    n_iter: int = 30,
-    cv: int = 3,
-    random_state: int = 42,
+    config: SearchCVConfig = SearchCVConfig(),
 ) -> dict:
     """
     Busca los mejores hiperparámetros para XGBRegressor usando búsqueda
@@ -124,29 +123,31 @@ def calcular_mejores_params_xgb(
         "gamma": [0, 0.1, 0.3],
     }
 
-    model = xgb.XGBRegressor(random_state=random_state, verbosity=0)
+    model = xgb.XGBRegressor(random_state=config.random_state, verbosity=0)
 
     search = RandomizedSearchCV(
         estimator=model,
         param_distributions=param_space,
-        n_iter=n_iter,
+        n_iter=config.n_iter,
         scoring="neg_root_mean_squared_error",
-        cv=cv,
-        random_state=random_state,
+        cv=config.cv,
+        random_state=config.random_state,
         n_jobs=-1,
     )
     search.fit(X, y)
 
-    logger.info("xgb_params_optimos", params=search.best_params_, rmse_cv=round(-search.best_score_, 4))
+    logger.info(
+        "xgb_params_optimos",
+        params=search.best_params_,
+        rmse_cv=round(-search.best_score_, 4),
+    )
     return search.best_params_
 
 
 def calcular_mejores_params_rf(
     X: pd.DataFrame,
     y: pd.Series,
-    n_iter: int = 30,
-    cv: int = 3,
-    random_state: int = 42,
+    config: SearchCVConfig = SearchCVConfig(),
 ) -> dict:
     """
     Busca los mejores hiperparámetros para RandomForestRegressor usando
@@ -171,20 +172,24 @@ def calcular_mejores_params_rf(
         "min_samples_leaf": [1, 2, 4],
     }
 
-    model = RandomForestRegressor(random_state=random_state, n_jobs=-1)
+    model = RandomForestRegressor(random_state=config.random_state, n_jobs=-1)
 
     search = RandomizedSearchCV(
         estimator=model,
         param_distributions=param_space,
-        n_iter=n_iter,
+        n_iter=config.n_iter,
         scoring="neg_root_mean_squared_error",
-        cv=cv,
-        random_state=random_state,
+        cv=config.cv,
+        random_state=config.random_state,
         n_jobs=-1,
     )
     search.fit(X, y)
 
-    logger.info("rf_params_optimos", params=search.best_params_, rmse_cv=round(-search.best_score_, 4))
+    logger.info(
+        "rf_params_optimos",
+        params=search.best_params_,
+        rmse_cv=round(-search.best_score_, 4),
+    )
     return search.best_params_
 
 
@@ -197,7 +202,7 @@ def calcular_params_apriori(canastas: list[list]) -> dict:
         - min_support: percentil 20 de los soportes individuales por producto,
           acotado entre 0.02 y 0.20. Captura el 80% de los productos más frecuentes
           sin incluir los muy raros que generan ruido.
-        - min_confidence: 2× el soporte medio de los productos, acotado entre
+        - min_confidence: 2x el soporte medio de los productos, acotado entre
           0.15 y 0.60. Exige que la regla sea al menos el doble de probable que
           encontrar el consecuente por azar.
         - min_lift: fijo en 1.0. Es el mínimo matemáticamente significativo

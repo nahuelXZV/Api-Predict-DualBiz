@@ -15,7 +15,25 @@ class Settings(BaseSettings):
     path_models: str = "storage/models"
     path_data: str = "storage/data"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    ml_db_driver: str = "ODBC Driver 17 for SQL Server"
+    ml_db_server: str = ""
+    ml_db_database: str = ""
+    ml_db_user: str = ""
+    ml_db_password: str = ""
+
+    @property
+    def ml_db_connection_string(self) -> str:
+        return (
+            f"DRIVER={{{self.ml_db_driver}}};"
+            f"SERVER={self.ml_db_server};"
+            f"DATABASE={self.ml_db_database};"
+            f"UID={self.ml_db_user};"
+            f"PWD={self.ml_db_password}"
+        )
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
 
 settings = Settings()
