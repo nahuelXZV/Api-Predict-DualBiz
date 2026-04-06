@@ -5,7 +5,7 @@ from app.domain.ml.pipeline_context import PredictContext
 from app.domain.ml.abstractions.ml_model_abc import MLModelABC
 from app.domain.ml.model_metadata import ModelMetadata
 from app.infrastructure.ml.predict.pedido_sugerido.pipeline import (
-    predict_pedido_sugerido_pipeline,
+    PedidoSugeridoPredictPipeline,
 )
 
 
@@ -30,7 +30,7 @@ class PedidoSugeridoModel(MLModelABC):
             parameters=data,
         )
 
-        pipeline = predict_pedido_sugerido_pipeline()
+        pipeline = PedidoSugeridoPredictPipeline()
         ctx = pipeline.run(ctx)
         response = ctx.data_response
         return response

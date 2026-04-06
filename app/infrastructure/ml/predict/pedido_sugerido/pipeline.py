@@ -1,4 +1,4 @@
-from app.domain.ml.abstractions.pipeline_base import PipelineBase
+from app.domain.ml.abstractions.pipeline_base import PredictionPipelineBase
 from app.infrastructure.ml.predict.pedido_sugerido.steps import (
     AprioriBuildCandidatesStep,
     AprioriRankAndPredictStep,
@@ -13,21 +13,24 @@ from app.infrastructure.ml.predict.pedido_sugerido.steps import (
 )
 
 
-def predict_pedido_sugerido_pipeline() -> PipelineBase:
-    pipeline = PipelineBase()
-    pipeline.add_step(LoadModelStep())
-    pipeline.add_step(ValidateClienteStep())
+class PedidoSugeridoPredictPipeline(PredictionPipelineBase):
+    def __init__(self) -> None:
+        super().__init__()
 
-    # KNN + XGBoost
-    pipeline.add_step(KnnFindNeighborsStep())
-    pipeline.add_step(KnnBuildCandidatesStep())
-    pipeline.add_step(KnnRankAndPredictStep())
-    # Apriori + XGBoost
-    pipeline.add_step(AprioriBuildCandidatesStep())
-    pipeline.add_step(AprioriRankAndPredictStep())
+    def build_steps(self) -> None:
+        self._steps.clear()
+        self.add_step(LoadModelStep())
+        self.add_step(ValidateClienteStep())
 
-    # Build response
-    pipeline.add_step(ParetoFilterStep())
-    pipeline.add_step(DestacadosStep())
-    pipeline.add_step(BuildResponseStep())
-    return pipeline
+        # KNN + XGBoost
+        self.add_step(KnnFindNeighborsStep())
+        self.add_step(KnnBuildCandidatesStep())
+        self.add_step(KnnRankAndPredictStep())
+        # Apriori + XGBoost
+        self.add_step(AprioriBuildCandidatesStep())
+        self.add_step(AprioriRankAndPredictStep())
+
+        # Build response
+        self.add_step(ParetoFilterStep())
+        self.add_step(DestacadosStep())
+        self.add_step(BuildResponseStep())

@@ -7,7 +7,7 @@ from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.pipeline_context import TrainingContext
 from app.infrastructure.ml.data_sources.data_source_factory import DataSourceFactory
-from app.infrastructure.ml.pipeline_registry import get_pipeline
+from app.infrastructure.ml.pipeline_registry import get_training_pipeline
 
 
 class ModelManager:
@@ -16,7 +16,7 @@ class ModelManager:
             "manager_train_start", model=request.model_name, version=request.version
         )
         try:
-            PipelineClass = get_pipeline(request.model_name)
+            PipelineClass = get_training_pipeline(request.model_name)
             data_source = DataSourceFactory.build(request.data_source_config)
 
             ctx = TrainingContext(
@@ -25,7 +25,8 @@ class ModelManager:
                 hyperparams=request.hyperparams,
             )
 
-            pipeline = PipelineClass(data_source)
+            pipeline = PipelineClass()
+            pipeline.set_datasource(data_source)
             result = pipeline.run(ctx)
 
             return TrainResponseDTO(

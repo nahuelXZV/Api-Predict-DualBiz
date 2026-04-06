@@ -1,4 +1,4 @@
-from app.domain.ml.abstractions.pipeline_base import PipelineBase
+from app.domain.ml.abstractions.pipeline_base import TrainingPipelineBase
 from app.domain.ml.abstractions.data_source_abc import DataSourceABC
 from app.infrastructure.ml.pipeline_registry import register_pipeline
 from app.infrastructure.ml.training.pedido_sugerido.steps import (
@@ -16,10 +16,19 @@ from app.infrastructure.ml.training.pedido_sugerido.steps import (
 
 
 @register_pipeline("pedido_sugerido")
-class PedidoSugeridoPipeline(PipelineBase):
-    def __init__(self, data_source: DataSourceABC) -> None:
+class PedidoSugeridoPipeline(TrainingPipelineBase):
+    def __init__(self) -> None:
         super().__init__()
-        self.add_step(LoadDataStep(data_source))
+        self._data_source: DataSourceABC | None = None
+
+    def set_datasource(self, data_source: DataSourceABC) -> None:
+        self._data_source = data_source
+
+    def build_steps(self) -> None:
+        if self._data_source is None:
+            raise ValueError("Debe llamar a set_datasource antes de set_steps")
+        self._steps.clear()
+        self.add_step(LoadDataStep(self._data_source))
         self.add_step(EdaCleanDataStep())
         self.add_step(CalculoAtributosDerivadosStep())
         self.add_step(ClusteringKMeansStep())

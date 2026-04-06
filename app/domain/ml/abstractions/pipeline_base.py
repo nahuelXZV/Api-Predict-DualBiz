@@ -1,5 +1,7 @@
+from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
 from app.domain.ml.abstractions.step_abc import StepABC
 from app.domain.core.logging import logger
 from app.domain.ml.pipeline_context import BaseContext
@@ -7,14 +9,18 @@ from app.domain.ml.pipeline_context import BaseContext
 T = TypeVar("T", bound=BaseContext)
 
 
-class PipelineBase(Generic[T]):
+class PipelineBase(ABC, Generic[T]):
     def __init__(self) -> None:
         self._steps = []
+
+    @abstractmethod
+    def build_steps(self) -> None: ...
 
     def add_step(self, step: StepABC[T]) -> None:
         self._steps.append(step)
 
     def run(self, ctx: T) -> T:
+        self.build_steps()
         step_names = [s.name for s in self._steps]
 
         logger.info(
@@ -51,3 +57,12 @@ class PipelineBase(Generic[T]):
     @property
     def steps(self) -> list[StepABC[T]]:
         return list(self._steps)
+
+
+class PredictionPipelineBase(PipelineBase[T], Generic[T]):
+    pass
+
+
+class TrainingPipelineBase(PipelineBase[T], Generic[T]):
+    @abstractmethod
+    def set_datasource(self, data_source: DataSourceABC) -> None: ...
