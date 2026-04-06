@@ -13,9 +13,9 @@ from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
 from app.domain.core.logging import logger
-from app.domain.ml.base_step import BaseStep
-from app.domain.ml.base_context import TrainingContext
-from app.domain.ml.data_source import DataSource
+from app.domain.ml.abstractions.data_source_abc import DataSourceABC
+from app.domain.ml.abstractions.step_abc import StepABC
+from app.domain.ml.pipeline_context import TrainingContext
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
@@ -62,14 +62,14 @@ CAT_FEATURES = [
 ]
 
 
-class LoadDataStep(BaseStep[TrainingContext]):
+class LoadDataStep(StepABC[TrainingContext]):
     """
     Carga el dataset crudo usando el DataSource inyectado.
     Puede ser SqlServerDataSource, ExcelDataSource, etc.
     Resultado: ctx.raw_data con todas las filas y columnas originales.
     """
 
-    def __init__(self, data_source: DataSource) -> None:
+    def __init__(self, data_source: DataSourceABC) -> None:
         self._data_source = data_source
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -77,7 +77,7 @@ class LoadDataStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class EdaCleanDataStep(BaseStep[TrainingContext]):
+class EdaCleanDataStep(StepABC[TrainingContext]):
     """
     Normaliza los nombres de columnas al formato snake_case interno y elimina
     filas con valores nulos en campos críticos (cliente_id, nombre_producto,
@@ -126,7 +126,7 @@ class EdaCleanDataStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
+class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
     """
     Calcula features derivadas a nivel de transacción a partir del historial
     de ventas ordenado por cliente-producto-fecha:
@@ -197,7 +197,7 @@ class CalculoAtributosDerivadosStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class ClusteringKMeansStep(BaseStep[TrainingContext]):
+class ClusteringKMeansStep(StepABC[TrainingContext]):
     """
     Segmenta los clientes en grupos de comportamiento de compra usando KMeans.
     Cada cliente se resume en un vector con: cantidad promedio comprada,
@@ -271,7 +271,7 @@ class ClusteringKMeansStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
+class VecinosCercanosKnnStep(StepABC[TrainingContext]):
     """
     Construye el modelo de vecinos cercanos (KNN) para encontrar clientes
     similares en tiempo de predicción. Es independiente de KMeansStep.
@@ -378,7 +378,7 @@ class VecinosCercanosKnnStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
+class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
     """
     Genera reglas de asociación entre productos usando el algoritmo Apriori.
     Opera sobre el historial de transacciones agrupado por cliente: cada
@@ -452,7 +452,7 @@ class ConjuntoReglasAprioriStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class PrepareDataArbolesStep(BaseStep[TrainingContext]):
+class PrepareDataArbolesStep(StepABC[TrainingContext]):
     """
     Construye el DataFrame de entrenamiento para los modelos XGBoost,
     con una fila por par (cliente_id, nombre_producto).
@@ -511,7 +511,7 @@ class PrepareDataArbolesStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
+class EnsembleArbolesRandomForestStep(StepABC[TrainingContext]):
     """
     Entrena un RandomForestRegressor para predecir la cantidad sugerida de un
     producto para un cliente (target: cantidad_vendida promedio por transacción).
@@ -559,7 +559,7 @@ class EnsembleArbolesRandomForestStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class SaveModelStep(BaseStep[TrainingContext]):
+class SaveModelStep(StepABC[TrainingContext]):
     """
     Serializa todos los artefactos del pipeline en un único archivo .pkl
     usando joblib. El archivo contiene un dict con la clave "artefactos"
@@ -599,7 +599,7 @@ class SaveModelStep(BaseStep[TrainingContext]):
         return ctx
 
 
-class RegistryModelStep(BaseStep[TrainingContext]):
+class RegistryModelStep(StepABC[TrainingContext]):
     """
     Carga el modelo recién guardado desde disco y lo registra en el
     model_registry en memoria, dejándolo disponible para el pipeline

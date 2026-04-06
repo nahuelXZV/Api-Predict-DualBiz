@@ -7,12 +7,15 @@ from app.application.services.model_manager_service import ModelManagerService
 
 
 class ModelsView(APIView):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.service = ModelManagerService()
+
     @extend_schema(
         tags=["models"],
         summary="Listar modelos cargados en el registro",
         responses={200: ModelMetadataSerializer(many=True)},
     )
     def get(self, request):
-        service = ModelManagerService()
-        result = service.list_models()
+        result = self.service.list_models()
         return success_response(data=result, message="Modelos listados exitosamente.")

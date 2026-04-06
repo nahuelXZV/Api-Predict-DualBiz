@@ -53,7 +53,9 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
     fecha_max = pd.to_datetime(req.perfil_productos["fecha_venta"]).max()
     mes_actual = fecha_max.month
 
-    historial_cliente = req.perfil_productos[req.perfil_productos["cliente_id"] == req.cliente_id]
+    historial_cliente = req.perfil_productos[
+        req.perfil_productos["cliente_id"] == req.cliente_id
+    ]
     if historial_cliente.empty:
         return pd.DataFrame()
     ctx_base = historial_cliente.sort_values("fecha_venta").iloc[-1]
@@ -61,7 +63,9 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
     filas = []
     for producto in req.candidatos:
         hist_prod = historial_cliente[historial_cliente["nombre_producto"] == producto]
-        prod_info = req.perfil_productos[req.perfil_productos["nombre_producto"] == producto]
+        prod_info = req.perfil_productos[
+            req.perfil_productos["nombre_producto"] == producto
+        ]
 
         if len(hist_prod) > 0:
             ultima = hist_prod.sort_values("fecha_venta").iloc[-1]
@@ -94,9 +98,19 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
                 else ctx_base["linea_producto"]
             )
             fuente = req.fuente_nueva
-            num_productos_distintos = int(prod_info["nombre_producto"].nunique()) if len(prod_info) > 0 else 0
-            importe_total_cliente = float(prod_info["cantidad_vendida"].sum()) if len(prod_info) > 0 else 0.0
-            frecuencia_promedio_cliente = float(prod_info["dias_entre_compras"].mean()) if len(prod_info) > 0 else 0.0
+            num_productos_distintos = (
+                int(prod_info["nombre_producto"].nunique()) if len(prod_info) > 0 else 0
+            )
+            importe_total_cliente = (
+                float(prod_info["cantidad_vendida"].sum())
+                if len(prod_info) > 0
+                else 0.0
+            )
+            frecuencia_promedio_cliente = (
+                float(prod_info["dias_entre_compras"].mean())
+                if len(prod_info) > 0
+                else 0.0
+            )
             cantidad_productos_comprados = 0
 
         filas.append(

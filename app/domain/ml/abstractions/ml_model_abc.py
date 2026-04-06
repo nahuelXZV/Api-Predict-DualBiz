@@ -5,7 +5,7 @@ from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.model_metadata import ModelMetadata
 
 
-class BaseMLModel(ABC):
+class MLModelABC(ABC):
     def __init__(self, metadata: ModelMetadata) -> None:
         self._metadata: ModelMetadata = metadata
         self._model: Any = None
