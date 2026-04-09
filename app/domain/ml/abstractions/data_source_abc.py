@@ -5,4 +5,5 @@ import pandas as pd
 
 class DataSourceABC(ABC):
     @abstractmethod
-    def load(self) -> pd.DataFrame: ...
+    def load(self) -> pd.DataFrame:
+        ...

@@ -2,7 +2,6 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from pathlib import Path
 from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.cluster import KMeans
@@ -20,46 +19,19 @@ from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
 from app.domain.ml.training_params import SearchCVConfig
+from app.infrastructure.ml.training.pedido_sugerido.constants import (
+    CAT_FEATURES,
+    RF_CANTIDAD_TARGET,
+    RF_FEATURES,
+    MODEL_PATH_BASE,
+)
 from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
     calcular_nro_vecinos_knn,
     calcular_params_apriori,
+    extraer_producto,
 )
-
-BASE_DIR = Path(__file__).resolve().parents[4]
-MODEL_PATH_BASE = BASE_DIR / "storage" / "models"
-
-RF_FEATURES = [
-    "nombre_producto",  # categorica → OrdinalEncoder
-    "marca",  # categorica
-    "linea_producto",  # categorica
-    "clasificacion_cliente",  # categorica
-    "sucursal",  # categorica
-    "ruta_id",  # numerica
-    "zona_id",  # numerica
-    "promedio_historico",  # cuánto compra en promedio
-    "promedio_ultimas_3",  # tendencia reciente (más importante que el histórico)
-    "dias_entre_compras",  # frecuencia de compra
-    "dias_desde_ultima_compra",  # recencia
-    "dia_semana",  # estacionalidad
-    "mes",  # estacionalidad
-    "segmento",  # cluster al que pertenece el cliente
-    "num_productos_distintos",  # variedad de productos que compra el cliente
-    "importe_total_cliente",  # volumen total comprado por el cliente
-    "frecuencia_promedio_cliente",  # frecuencia promedio entre compras del cliente
-    "cantidad_productos_comprados",  # cantidad total de productos comprados por el cliente
-]
-
-RF_CANTIDAD_TARGET = "cantidad_vendida"
-
-CAT_FEATURES = [
-    "nombre_producto",
-    "marca",
-    "linea_producto",
-    "clasificacion_cliente",
-    "sucursal",
-]
 
 
 class LoadDataStep(StepABC[TrainingContext]):
@@ -144,7 +116,7 @@ class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
-            ctx.errors.append("AddDerivedFeatureStep: clean_data es None.")
+            ctx.errors.append("CalculoAtributosDerivadosStep: clean_data es None.")
             return ctx
 
         df = ctx.clean_data.copy()
@@ -210,7 +182,7 @@ class ClusteringKMeansStep(StepABC[TrainingContext]):
         Cluster 4 → clientes irregulares
 
     El segmento resultante se añade como columna a ctx.clean_data para que
-    los modelos XGBoost puedan usarlo como feature.
+    los modelos RandomForest puedan usarlo como feature.
 
     Artefacto guardado en ctx.extra["model_km"]:
         - model: objeto KMeans entrenado
@@ -304,7 +276,7 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
-            ctx.errors.append("KnnStep: clean_data es None.")
+            ctx.errors.append("VecinosCercanosKnnStep: clean_data es None.")
             return ctx
 
         df = ctx.clean_data.copy()
@@ -399,7 +371,7 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
-            ctx.errors.append("AprioriStep: clean_data es None.")
+            ctx.errors.append("ConjuntoReglasAprioriStep: clean_data es None.")
             return ctx
 
         df = ctx.clean_data
@@ -416,6 +388,7 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
         min_confidence = params["min_confidence"]
         min_lift = params["min_lift"]
 
+        # Crear matriz binaria de clientes-productos para Apriori
         te = TransactionEncoder()
         te_array = te.fit_transform(canastas)
         df_encoded = pd.DataFrame(te_array, columns=te.columns_)  # type: ignore
@@ -428,7 +401,7 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
 
         if frequent_itemsets.empty:
             ctx.errors.append(
-                "AprioriStep: no se encontraron itemsets frecuentes. Bajá min_support."
+                "ConjuntoReglasAprioriStep: no se encontraron itemsets frecuentes. Bajá min_support."
             )
             return ctx
 
@@ -440,10 +413,11 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
         )
         rules = rules[rules["lift"] >= min_lift].copy()
 
-        # Simplifica: antecedente y consecuente como strings (1 producto c/u)
-        rules = rules[rules["antecedents"].apply(len) == 1].copy()
-        rules["antecedent"] = rules["antecedents"].apply(lambda x: list(x)[0])
-        rules["consequent"] = rules["consequents"].apply(lambda x: list(x)[0])
+        # Conserva solo reglas simples: 1 producto → 1 producto
+        es_regla_simple = rules["antecedents"].apply(len) == 1
+        rules = rules[es_regla_simple].copy()
+        rules["antecedent"] = rules["antecedents"].apply(extraer_producto)
+        rules["consequent"] = rules["consequents"].apply(extraer_producto)
         rules = rules[["antecedent", "consequent", "support", "confidence", "lift"]]
         rules = rules.sort_values("confidence", ascending=False).reset_index(drop=True)
 
@@ -454,27 +428,27 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
 
 class PrepareDataArbolesStep(StepABC[TrainingContext]):
     """
-    Construye el DataFrame de entrenamiento para los modelos XGBoost,
+    Construye el DataFrame de entrenamiento para el RandomForestRegressor,
     con una fila por par (cliente_id, nombre_producto).
 
     Las features se agregan desde el historial de transacciones:
     promedios, recencia, estacionalidad, segmento del cliente, etc.
 
     El único target es cantidad_vendida (mean): cuánto compra el cliente
-    de ese producto en promedio por transacción. Usado por XGBRegressor.
+    de ese producto en promedio por transacción. Usado por RandomForestRegressor.
 
-    Resultado: ctx.extra["data_xgb_df"] con features y el target.
+    Resultado: ctx.extra["data_rf_df"] con features y el target.
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
-            ctx.errors.append("PrepareDataXGBoostStep: clean_data es None.")
+            ctx.errors.append("PrepareDataArbolesStep: clean_data es None.")
             return ctx
 
         df = ctx.clean_data.copy()
 
         # Una fila por cliente-producto (nivel de predicción)
-        data_xgb_df = (
+        data_rf_df = (
             df.groupby(["cliente_id", "nombre_producto"])
             .agg(
                 cantidad_vendida=("cantidad_vendida", "mean"),
@@ -505,9 +479,9 @@ class PrepareDataArbolesStep(StepABC[TrainingContext]):
             .reset_index()
         )
 
-        logger.info("datos_xgb_preparados", pares_cliente_producto=len(data_xgb_df))
+        logger.info("datos_rf_preparados", pares_cliente_producto=len(data_rf_df))
 
-        ctx.extra["data_xgb_df"] = data_xgb_df
+        ctx.extra["data_rf_df"] = data_rf_df
         return ctx
 
 
@@ -526,13 +500,13 @@ class EnsembleArbolesRandomForestStep(StepABC[TrainingContext]):
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
-        data_xgb_df = ctx.extra.get("data_xgb_df")
-        if data_xgb_df is None:
-            ctx.errors.append("EnsembleArbolesRandomForestStep: data_xgb_df es None.")
+        data_rf_df = ctx.extra.get("data_rf_df")
+        if data_rf_df is None:
+            ctx.errors.append("EnsembleArbolesRandomForestStep: data_rf_df es None.")
             return ctx
 
-        X = data_xgb_df[RF_FEATURES].copy()
-        y = data_xgb_df[RF_CANTIDAD_TARGET].fillna(0)
+        X = data_rf_df[RF_FEATURES].copy()
+        y = data_rf_df[RF_CANTIDAD_TARGET].fillna(0)
 
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
@@ -585,8 +559,7 @@ class SaveModelStep(StepABC[TrainingContext]):
             "perfil_productos": ctx.clean_data,
         }
 
-        MODEL_PATH_BASE.mkdir(parents=True, exist_ok=True)
-        path_model = MODEL_PATH_BASE / f"modelo_{ctx.model_name}_{ctx.version}.pkl"
+        path_model = f"{MODEL_PATH_BASE}/modelo_{ctx.model_name}_{ctx.version}.pkl"
         joblib.dump({"artefactos": artefactos}, str(path_model))
 
         ctx.extra["path_model"] = path_model

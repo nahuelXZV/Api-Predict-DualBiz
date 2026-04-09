@@ -5,31 +5,17 @@ from app.domain.core.logging import logger
 from app.domain.ml.pipeline_context import PredictContext
 from app.domain.ml.abstractions.step_abc import StepABC
 from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
+from app.infrastructure.ml.predict.pedido_sugerido.constants import (
+    PRODUCTOS_DESTACADOS,
+    CAT_FEATURES,
+    CANTIDAD_MINIMA,
+    TOP_N,
+    PORCENTAJE_PARETO,
+)
 from app.infrastructure.ml.predict.pedido_sugerido.utils import (
     apply_pareto,
     build_features_candidatos,
 )
-
-CANTIDAD_MINIMA = 1.0
-TOP_N = 50
-PORCENTAJE_PARETO = 0.20
-
-CAT_FEATURES = [
-    "nombre_producto",
-    "marca",
-    "linea_producto",
-    "clasificacion_cliente",
-    "sucursal",
-]
-PRODUCTOS_DESTACADOS = [
-    {"nombre_producto": "PRODUCTO EJEMPLO A", "razon": "oferta", "fuente": "destacado"},
-    {
-        "nombre_producto": "PRODUCTO EJEMPLO B",
-        "razon": "liquidacion",
-        "fuente": "destacado",
-    },
-    {"nombre_producto": "PRODUCTO EJEMPLO C", "razon": "nuevo", "fuente": "destacado"},
-]
 
 
 class LoadModelStep(StepABC[PredictContext]):
@@ -255,14 +241,15 @@ class KnnRankAndPredictStep(StepABC[PredictContext]):
 
 class AprioriBuildCandidatesStep(StepABC[PredictContext]):
     """
-    Construye candidatos a recomendar usando las reglas de asociación Apriori.
+    Construye candidatos a recomendar usando las reglas de asociación Apriori,
+    expandiendo las recomendaciones de KNN+RF.
 
-    Busca reglas cuyo antecedente coincida con algún producto que el cliente
-    ya compra. Los consequents son los productos candidatos. El score de cada
-    candidato es el máximo de confidence x lift entre todas las reglas que lo
-    generan.
+    Busca reglas cuyo antecedente coincida con algún producto recomendado por KNN.
+    Los consequents son los productos candidatos. El score de cada candidato es el
+    máximo de confidence x lift entre todas las reglas que lo generan.
 
-    Si solo_nuevos=True (default), excluye los productos que el cliente ya compra.
+    Siempre excluye de los resultados los productos que KNN ya recomendó.
+    Si solo_nuevos=True, también excluye los que el cliente ya compra.
 
     Guarda en ctx.extra:
         - candidatos_apriori: lista de productos candidatos
@@ -273,20 +260,17 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
         rules = ctx.extra["model_apriori"]["rules"]
         perfil_productos = ctx.extra["perfil_productos"]
         cliente_id = ctx.parameters.get("cliente_id")
+        recomendaciones_knn = ctx.extra["recomendaciones_knn_xgb"]
 
-        productos_cliente = set(
-            perfil_productos[perfil_productos["cliente_id"] == cliente_id][
-                "nombre_producto"
-            ].unique()
-        )
+        productos_knn = set(recomendaciones_knn["nombre_producto"].tolist())
 
-        reglas_match = rules[rules["antecedent"].isin(productos_cliente)].copy()
+        reglas_match = rules[rules["antecedent"].isin(productos_knn)].copy()
 
         if reglas_match.empty:
             logger.warning(
                 "apriori_sin_reglas",
                 cliente_id=cliente_id,
-                productos_cliente=len(productos_cliente),
+                productos_knn=len(productos_knn),
             )
             ctx.extra["candidatos_apriori"] = []
             ctx.extra["scores_apriori"] = pd.Series(dtype=float)
@@ -298,11 +282,21 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
         # Para cada consecuente, tomar la regla con mayor score y conservar su antecedente
         idx_mejor = reglas_match.groupby("consequent")["score"].idxmax()
         mejores_reglas = reglas_match.loc[idx_mejor].set_index("consequent")
-        scores = mejores_reglas["score"]  # mismo orden de índice que antecedente_map
+        scores = mejores_reglas["score"]
         antecedente_map = mejores_reglas["antecedent"]
+
+        # Excluir siempre los productos que KNN ya recomendó
+        mask = ~scores.index.isin(productos_knn)
+        scores = scores[mask]
+        antecedente_map = antecedente_map[mask]
 
         solo_nuevos = ctx.parameters.get("solo_nuevos", False)
         if solo_nuevos:
+            productos_cliente = set(
+                perfil_productos[perfil_productos["cliente_id"] == cliente_id][
+                    "nombre_producto"
+                ].unique()
+            )
             mask = ~scores.index.isin(productos_cliente)
             scores = scores[mask]
             antecedente_map = antecedente_map[mask]

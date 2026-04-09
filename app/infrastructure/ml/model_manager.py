@@ -6,7 +6,7 @@ from app.domain.dtos.training_dto import TrainRequestDTO, TrainResponseDTO
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
 from app.domain.ml.pipeline_context import TrainingContext
-from app.infrastructure.ml.data_sources.data_source_factory import DataSourceFactory
+from app.domain.ml.data_source_factory import DataSourceFactory
 from app.infrastructure.ml.pipeline_registry import get_training_pipeline
 
 

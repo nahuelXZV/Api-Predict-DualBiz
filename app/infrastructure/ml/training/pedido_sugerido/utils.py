@@ -233,3 +233,12 @@ def calcular_params_apriori(canastas: list[list]) -> dict:
     }
     logger.info("apriori_params_calculados", **params)
     return params
+
+
+def extraer_producto(frozenset_producto: frozenset) -> str:
+    """
+    Extrae el único producto de un frozenset generado por mlxtend.
+    Solo usar en reglas donde el antecedente o consecuente tiene exactamente 1 elemento.
+    """
+    productos = list(frozenset_producto)
+    return productos[0]
