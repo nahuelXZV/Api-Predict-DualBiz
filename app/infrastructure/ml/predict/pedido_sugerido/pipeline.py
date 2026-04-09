@@ -22,15 +22,18 @@ class PedidoSugeridoPredictPipeline(PredictionPipelineBase):
         self.add_step(LoadModelStep())
         self.add_step(ValidateClienteStep())
 
-        # KNN + XGBoost
+        # KNN + RandomForest
         self.add_step(KnnFindNeighborsStep())
         self.add_step(KnnBuildCandidatesStep())
         self.add_step(KnnRankAndPredictStep())
-        # Apriori + XGBoost
+
+        # Pareto sobre KNN → Apriori usa solo las mejores recomendaciones KNN como antecedentes
+        self.add_step(ParetoFilterStep())
+
+        # Apriori + RandomForest (expande las recomendaciones KNN filtradas)
         self.add_step(AprioriBuildCandidatesStep())
         self.add_step(AprioriRankAndPredictStep())
 
         # Build response
-        self.add_step(ParetoFilterStep())
         self.add_step(DestacadosStep())
         self.add_step(BuildResponseStep())

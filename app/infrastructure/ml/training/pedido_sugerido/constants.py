@@ -24,6 +24,28 @@ RF_FEATURES = [
 
 RF_CANTIDAD_TARGET = "cantidad_vendida"
 
+# Fracción del dataset usada para buscar hiperparámetros en KMeans, KNN y RandomForest.
+# El modelo final siempre se entrena con el 100% de los datos.
+SAMPLE_FRAC_PARAMS = 0.30
+
+# Columnas del historial de ventas que se necesitan en predicción.
+# El resto son artefactos de entrenamiento que no se guardan en el .pkl.
+HISTORIAL_VENTAS_COLS = [
+    "cliente_id",
+    "producto_id",
+    "nombre_producto",
+    "fecha_venta",
+    "cantidad_vendida",
+    "dias_entre_compras",
+    "marca",
+    "linea_producto",
+    "clasificacion_cliente",
+    "sucursal",
+    "ruta_id",
+    "zona_id",
+    "dia_semana",
+]
+
 CAT_FEATURES = [
     "nombre_producto",
     "marca",

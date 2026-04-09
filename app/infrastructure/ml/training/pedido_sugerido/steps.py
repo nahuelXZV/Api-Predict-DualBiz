@@ -21,9 +21,11 @@ from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoMod
 from app.domain.ml.training_params import SearchCVConfig
 from app.infrastructure.ml.training.pedido_sugerido.constants import (
     CAT_FEATURES,
+    HISTORIAL_VENTAS_COLS,
     RF_CANTIDAD_TARGET,
     RF_FEATURES,
     MODEL_PATH_BASE,
+    SAMPLE_FRAC_PARAMS,
 )
 from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_mejores_params_rf,
@@ -31,6 +33,7 @@ from app.infrastructure.ml.training.pedido_sugerido.utils import (
     calcular_nro_vecinos_knn,
     calcular_params_apriori,
     extraer_producto,
+    filtrar_canastas_por_soporte,
 )
 
 
@@ -52,7 +55,7 @@ class LoadDataStep(StepABC[TrainingContext]):
 class EdaCleanDataStep(StepABC[TrainingContext]):
     """
     Normaliza los nombres de columnas al formato snake_case interno y elimina
-    filas con valores nulos en campos críticos (cliente_id, nombre_producto,
+    filas con valores nulos en campos críticos (cliente_id, producto_id,
     cantidad_vendida). Sin estos tres campos no se puede construir ninguna
     feature ni target.
     Resultado: ctx.clean_data listo para el resto del pipeline.
@@ -69,6 +72,7 @@ class EdaCleanDataStep(StepABC[TrainingContext]):
             columns={
                 "FechaVenta": "fecha_venta",
                 "ID_Ruta": "ruta_id",
+                "ID_Producto": "producto_id",
                 "ID_Zona": "zona_id",
                 "ID_Cliente": "cliente_id",
                 "Producto": "nombre_producto",
@@ -85,7 +89,7 @@ class EdaCleanDataStep(StepABC[TrainingContext]):
 
         antes = len(df)
         df = df.dropna(
-            subset=["cliente_id", "nombre_producto", "cantidad_vendida", "fecha_venta"]
+            subset=["cliente_id", "producto_id", "cantidad_vendida", "fecha_venta"]
         )
         eliminadas = antes - len(df)
         logger.info(
@@ -121,9 +125,9 @@ class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
 
         df = ctx.clean_data.copy()
         df["fecha_venta"] = pd.to_datetime(df["fecha_venta"])
-        df = df.sort_values(["cliente_id", "nombre_producto", "fecha_venta"])
+        df = df.sort_values(["cliente_id", "producto_id", "fecha_venta"])
 
-        grp = df.groupby(["cliente_id", "nombre_producto"])
+        grp = df.groupby(["cliente_id", "producto_id"])
 
         # Frecuencia entre compras
         df["fecha_anterior"] = grp["fecha_venta"].shift(1)
@@ -150,9 +154,7 @@ class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
 
         grp_cliente = df.groupby("cliente_id")
         # productos distintos
-        df["num_productos_distintos"] = grp_cliente["nombre_producto"].transform(
-            "nunique"
-        )
+        df["num_productos_distintos"] = grp_cliente["producto_id"].transform("nunique")
         # importe total cliente
         df["importe_total_cliente"] = grp_cliente["cantidad_vendida"].transform("sum")
         # frecuencia promedio entre dias de compras
@@ -160,7 +162,7 @@ class CalculoAtributosDerivadosStep(StepABC[TrainingContext]):
             "mean"
         )
         # cantidad diferente de productos comprados
-        df["cantidad_productos_comprados"] = grp_cliente["nombre_producto"].transform(
+        df["cantidad_productos_comprados"] = grp_cliente["producto_id"].transform(
             "count"
         )
 
@@ -192,7 +194,7 @@ class ClusteringKMeansStep(StepABC[TrainingContext]):
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
         if ctx.clean_data is None:
-            ctx.errors.append("KMeansStep: clean_data es None.")
+            ctx.errors.append("ClusteringKMeansStep: clean_data es None.")
             return ctx
 
         df = ctx.clean_data.copy()
@@ -213,7 +215,7 @@ class ClusteringKMeansStep(StepABC[TrainingContext]):
                     "dias_entre_compras",
                     lambda x: x[x > 0].mean() if (x > 0).any() else 0,
                 ),
-                num_productos_distintos=("nombre_producto", "nunique"),
+                num_productos_distintos=("producto_id", "nunique"),
                 meses_activo=("mes", "nunique"),
             )
             .reset_index()
@@ -222,7 +224,8 @@ class ClusteringKMeansStep(StepABC[TrainingContext]):
 
         scaler_km = StandardScaler()
         x_km = scaler_km.fit_transform(data_km[feats_km])
-        nro_clusters = calcular_nro_clusters_kmeans(x_km)
+        muestra_km = pd.DataFrame(x_km).sample(frac=SAMPLE_FRAC_PARAMS, random_state=42).values
+        nro_clusters = calcular_nro_clusters_kmeans(muestra_km)
 
         model_km = KMeans(
             n_clusters=nro_clusters, init="k-means++", random_state=42, n_init="auto"
@@ -267,6 +270,9 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
         - cat_features: lista de features categóricas
         - data: DataFrame con el perfil agregado de cada cliente
 
+    El historial de compras por vecino se calcula en predicción directamente
+    desde historial_ventas, evitando almacenar una matriz densa clientes×productos.
+
     n_neighbors = número de vecinos que vas a usar para comparar
     Ejemplo:
         n_neighbors = 3 → miras 3 clientes parecidos
@@ -279,7 +285,6 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
             ctx.errors.append("VecinosCercanosKnnStep: clean_data es None.")
             return ctx
 
-        df = ctx.clean_data.copy()
         feats_num_knn = [
             "cantidad_vendida",
             "promedio_historico",
@@ -296,7 +301,7 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
         ]
 
         data_knn = (
-            df.groupby("cliente_id")
+            ctx.clean_data.groupby("cliente_id")
             .agg(
                 cantidad_vendida=("cantidad_vendida", "mean"),
                 promedio_historico=("promedio_historico", "mean"),
@@ -304,7 +309,7 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
                     "dias_entre_compras",
                     lambda x: x[x > 0].mean() if (x > 0).any() else 0,
                 ),
-                num_productos_distintos=("nombre_producto", "nunique"),
+                num_productos_distintos=("producto_id", "nunique"),
                 meses_activo=("mes", "nunique"),
                 clasificacion_cliente=("clasificacion_cliente", "first"),
                 sucursal=("sucursal", "first"),
@@ -324,17 +329,12 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
         x_cat_knn = enc_cat_knn.fit_transform(data_knn[feats_cat_knn].astype(str))
         x_knn = np.hstack([x_num_knn, x_cat_knn])
 
-        n_neighbors = calcular_nro_vecinos_knn(x_knn)
+        n_muestra = max(100, int(len(x_knn) * SAMPLE_FRAC_PARAMS))
+        indices_muestra = np.random.default_rng(42).choice(len(x_knn), size=n_muestra, replace=False)
+        muestra_knn = x_knn[indices_muestra]
+        n_neighbors = calcular_nro_vecinos_knn(muestra_knn)
         model_knn = NearestNeighbors(n_neighbors=n_neighbors, metric="cosine")
         model_knn.fit(x_knn)
-
-        perfil_pivot = ctx.clean_data.pivot_table(
-            index="cliente_id",
-            columns="nombre_producto",
-            values="cantidad_vendida",
-            aggfunc="sum",
-            fill_value=0,
-        )
 
         model_knn = {
             "model": model_knn,
@@ -344,7 +344,6 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
             "feats_num": feats_num_knn,
             "cat_features": feats_cat_knn,
             "data": data_knn,
-            "perfil_pivot": perfil_pivot,
         }
         ctx.extra["model_knn"] = model_knn
         return ctx
@@ -378,7 +377,7 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
 
         # Una canasta por cliente: productos únicos que compró
         canastas = (
-            df.groupby("cliente_id")["nombre_producto"]
+            df.groupby("cliente_id")["producto_id"]
             .apply(lambda x: x.unique().tolist())
             .tolist()
         )
@@ -388,15 +387,21 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
         min_confidence = params["min_confidence"]
         min_lift = params["min_lift"]
 
+        canastas = filtrar_canastas_por_soporte(canastas, min_support)
+
         # Crear matriz binaria de clientes-productos para Apriori
         te = TransactionEncoder()
         te_array = te.fit_transform(canastas)
         df_encoded = pd.DataFrame(te_array, columns=te.columns_)  # type: ignore
 
+        # max_len=2: solo computa pares de productos (itemsets de tamaño 1 y 2).
+        # Las reglas que usamos son siempre A→B (1 producto → 1 producto),
+        # por lo que itemsets de tamaño 3+ son innecesarios y causan explosión de memoria.
         frequent_itemsets = apriori(
             df_encoded,
             min_support=min_support,
             use_colnames=True,
+            max_len=2,
         )
 
         if frequent_itemsets.empty:
@@ -429,7 +434,7 @@ class ConjuntoReglasAprioriStep(StepABC[TrainingContext]):
 class PrepareDataArbolesStep(StepABC[TrainingContext]):
     """
     Construye el DataFrame de entrenamiento para el RandomForestRegressor,
-    con una fila por par (cliente_id, nombre_producto).
+    con una fila por par (cliente_id, producto_id).
 
     Las features se agregan desde el historial de transacciones:
     promedios, recencia, estacionalidad, segmento del cliente, etc.
@@ -444,13 +449,11 @@ class PrepareDataArbolesStep(StepABC[TrainingContext]):
         if ctx.clean_data is None:
             ctx.errors.append("PrepareDataArbolesStep: clean_data es None.")
             return ctx
-
-        df = ctx.clean_data.copy()
-
         # Una fila por cliente-producto (nivel de predicción)
         data_rf_df = (
-            df.groupby(["cliente_id", "nombre_producto"])
+            ctx.clean_data.groupby(["cliente_id", "producto_id"])
             .agg(
+                nombre_producto=("nombre_producto", "first"),
                 cantidad_vendida=("cantidad_vendida", "mean"),
                 promedio_historico=("promedio_historico", "mean"),
                 promedio_ultimas_3=("promedio_ultimas_3", "last"),
@@ -511,7 +514,9 @@ class EnsembleArbolesRandomForestStep(StepABC[TrainingContext]):
         enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
         X[CAT_FEATURES] = enc.fit_transform(X[CAT_FEATURES].fillna("DESCONOCIDO"))
 
-        config_rf = calcular_mejores_params_rf(X, y, SearchCVConfig())
+        X_muestra = X.sample(frac=SAMPLE_FRAC_PARAMS, random_state=42)
+        y_muestra = y.loc[X_muestra.index]
+        config_rf = calcular_mejores_params_rf(X_muestra, y_muestra, SearchCVConfig())
         model = RandomForestRegressor(
             n_estimators=config_rf["n_estimators"],
             max_depth=config_rf["max_depth"],
@@ -542,7 +547,7 @@ class SaveModelStep(StepABC[TrainingContext]):
         - model_km: segmentación KMeans (no usada en predicción actualmente)
         - model_knn: vecinos cercanos con scaler, encoder y perfil de clientes
         - model_rf_cantidad: regresor de cantidad con encoder y features
-        - perfil_productos: historial completo de transacciones, usado en
+        - historial_ventas: historial completo de transacciones, usado en
           predicción para construir features de productos candidatos
     """
 
@@ -556,7 +561,7 @@ class SaveModelStep(StepABC[TrainingContext]):
             "model_knn": ctx.extra["model_knn"],
             "model_apriori": ctx.extra["model_apriori"],
             "model_rf_cantidad": ctx.extra["model_rf_cantidad"],
-            "perfil_productos": ctx.clean_data,
+            "historial_ventas": ctx.clean_data[HISTORIAL_VENTAS_COLS],
         }
 
         path_model = f"{MODEL_PATH_BASE}/modelo_{ctx.model_name}_{ctx.version}.pkl"

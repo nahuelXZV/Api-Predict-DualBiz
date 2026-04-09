@@ -25,7 +25,7 @@ class LoadModelStep(StepABC[PredictContext]):
         - model_knn: vecinos cercanos (incluye scaler, encoder, perfil de clientes)
         - model_rf_cantidad: regresor de cantidad (incluye encoder y features)
         - model_apriori: reglas de asociación entre productos
-        - perfil_productos: historial completo de transacciones del entrenamiento
+        - historial_ventas: historial completo de transacciones del entrenamiento
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
@@ -33,7 +33,7 @@ class LoadModelStep(StepABC[PredictContext]):
         ctx.extra["model_knn"] = art["model_knn"]
         ctx.extra["model_rf_cantidad"] = art["model_rf_cantidad"]
         ctx.extra["model_apriori"] = art["model_apriori"]
-        ctx.extra["perfil_productos"] = art["perfil_productos"]
+        ctx.extra["historial_ventas"] = art["historial_ventas"]
         return ctx
 
 
@@ -126,7 +126,7 @@ class KnnBuildCandidatesStep(StepABC[PredictContext]):
     Construye la lista de productos candidatos a recomendar a partir del
     historial de compras de los vecinos.
 
-    Construye una matriz pivot (cliente x producto) desde perfil_productos
+    Construye una matriz pivot (cliente x producto) desde historial_ventas
     y filtra solo las filas de los vecinos. Con esa submatriz calcula:
         - prom_vecinos: cantidad promedio que compran los vecinos por producto
         - pct_vecinos: fracción de vecinos que compran cada producto (score)
@@ -136,33 +136,39 @@ class KnnBuildCandidatesStep(StepABC[PredictContext]):
 
     Guarda en ctx.extra:
         - candidatos: lista de productos a evaluar
-        - pct_vecinos: Serie indexada por nombre_producto con el score
+        - pct_vecinos: Serie indexada por producto_id con el score
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
-        perfil_productos = ctx.extra["perfil_productos"]
+        historial_ventas = ctx.extra["historial_ventas"]
         vecinos_ids = ctx.extra["vecinos_ids"]
-        perfil_pivot = ctx.extra["model_knn"]["perfil_pivot"]
 
-        perfil_vecinos = perfil_pivot.loc[perfil_pivot.index.isin(vecinos_ids)]
-        prom_vecinos = (
-            perfil_vecinos.mean(axis=0)
-            if not perfil_vecinos.empty
-            else pd.Series(dtype=float)
-        )
-        pct_vecinos = (
-            (perfil_vecinos > 0).mean(axis=0)
-            if not perfil_vecinos.empty
-            else pd.Series(dtype=float)
-        )
+        historial_vecinos = historial_ventas[
+            historial_ventas["cliente_id"].isin(vecinos_ids)
+        ]
+
+        if historial_vecinos.empty:
+            prom_vecinos = pd.Series(dtype=float)
+            pct_vecinos = pd.Series(dtype=float)
+        else:
+            n_vecinos = len(vecinos_ids)
+            prom_vecinos = (
+                historial_vecinos.groupby("producto_id")["cantidad_vendida"].sum()
+                / n_vecinos
+            )
+            n_compraron = historial_vecinos.groupby("producto_id")[
+                "cliente_id"
+            ].nunique()
+            pct_vecinos = n_compraron / n_vecinos
+
         candidatos_vecinos = prom_vecinos[prom_vecinos > 0].index.tolist()
 
         solo_nuevos = ctx.parameters.get("solo_nuevos", False)
         if solo_nuevos:
             cliente_id = ctx.parameters.get("cliente_id")
             productos_propios = set(
-                perfil_productos[perfil_productos["cliente_id"] == cliente_id][
-                    "nombre_producto"
+                historial_ventas[historial_ventas["cliente_id"] == cliente_id][
+                    "producto_id"
                 ].unique()
             )
             candidatos = [p for p in candidatos_vecinos if p not in productos_propios]
@@ -179,7 +185,7 @@ class KnnBuildCandidatesStep(StepABC[PredictContext]):
             BuildFeaturesRequest(
                 candidatos=candidatos,
                 cliente_id=ctx.parameters.get("cliente_id"),
-                perfil_productos=ctx.extra["perfil_productos"],
+                historial_ventas=ctx.extra["historial_ventas"],
                 segmento=ctx.extra["segmento"],
                 fuente_nueva="vecinos",
             )
@@ -191,8 +197,8 @@ class KnnBuildCandidatesStep(StepABC[PredictContext]):
 
 class KnnRankAndPredictStep(StepABC[PredictContext]):
     """
-    Genera las recomendaciones KNN+XGB combinando el score de vecinos con
-    la predicción de cantidad del XGBRegressor.
+    Genera las recomendaciones KNN+RF combinando el score de vecinos con
+    la predicción de cantidad del RandomForestRegressor.
 
     Parámetros configurables vía ctx.extra:
         - top_n (default 10): número máximo de productos a retornar
@@ -201,10 +207,10 @@ class KnnRankAndPredictStep(StepABC[PredictContext]):
 
     Flujo:
         1. Asigna score = pct_vecinos (fracción de vecinos que compran el producto).
-        2. Predice la cantidad sugerida con XGBRegressor.
+        2. Predice la cantidad sugerida con RandomForestRegressor.
 
     Guarda en ctx.extra["recomendaciones_knn_xgb"]: DataFrame con
-    nombre_producto, cantidad_sugerida, score, fuente.
+    producto_id, cantidad_sugerida, score, fuente.
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
@@ -212,7 +218,13 @@ class KnnRankAndPredictStep(StepABC[PredictContext]):
 
         if df.empty:
             ctx.extra["recomendaciones_knn_xgb"] = pd.DataFrame(
-                columns=["nombre_producto", "cantidad_sugerida", "score", "fuente"]
+                columns=[
+                    "producto_id",
+                    "nombre_producto",
+                    "cantidad_sugerida",
+                    "score",
+                    "fuente",
+                ]
             )
             logger.warning("knn_sin_candidatos")
             return ctx
@@ -221,7 +233,7 @@ class KnnRankAndPredictStep(StepABC[PredictContext]):
         pct_vecinos = ctx.extra["pct_vecinos"]
         features = model_rf_cantidad["features"]
 
-        df["score"] = df["nombre_producto"].map(pct_vecinos).fillna(0)
+        df["score"] = df["producto_id"].map(pct_vecinos).fillna(0)
 
         df_cantidad = df.copy()
         df_cantidad[CAT_FEATURES] = model_rf_cantidad["encoder"].transform(
@@ -232,10 +244,53 @@ class KnnRankAndPredictStep(StepABC[PredictContext]):
         ).round(2)
 
         recomendaciones = df[
-            ["nombre_producto", "cantidad_sugerida", "score", "_fuente"]
+            ["producto_id", "nombre_producto", "cantidad_sugerida", "score", "_fuente"]
         ].rename(columns={"_fuente": "fuente"})
         ctx.extra["recomendaciones_knn_xgb"] = recomendaciones
         logger.info("knn_candidatos_con_cantidad", n_candidatos=len(recomendaciones))
+        return ctx
+
+
+class ParetoFilterStep(StepABC[PredictContext]):
+    """
+    Aplica la ley de Pareto sobre las recomendaciones KNN antes de que Apriori
+    las use como antecedentes. De esta forma Apriori expande solo los mejores
+    productos recomendados por KNN, no todos los candidatos.
+
+    Pasos:
+        1. Filtra productos con cantidad_sugerida menor a cantidad_minima.
+        2. Ordena por cantidad_sugerida descendente.
+        3. Retiene los productos que cubren el porcentaje_pareto del volumen total.
+        4. Aplica top_n como techo máximo.
+
+    Parámetros configurables vía ctx.parameters:
+        - top_n (default 50): techo máximo de productos a retornar
+        - cantidad_minima (default 1.0): filtra productos con cantidad menor
+        - porcentaje_pareto (int 1-100, default 20): porcentaje del volumen total
+          de cantidad_sugerida que se quiere cubrir.
+    """
+
+    def execute(self, ctx: PredictContext) -> PredictContext:
+        top_n = ctx.parameters.get("top_n", TOP_N)
+        cantidad_minima = ctx.parameters.get("cantidad_minima", CANTIDAD_MINIMA)
+        porcentaje_raw = ctx.parameters.get(
+            "porcentaje_pareto", PORCENTAJE_PARETO * 100
+        )
+        porcentaje_raw = max(1, min(100, int(porcentaje_raw)))
+        pareto_threshold = porcentaje_raw / 100
+
+        pareto_config = ParetoConfig(
+            top_n=top_n,
+            cantidad_minima=cantidad_minima,
+            porcentaje_volumen=pareto_threshold,
+        )
+        ctx.extra["recomendaciones_knn_xgb"] = apply_pareto(
+            ctx.extra["recomendaciones_knn_xgb"], pareto_config
+        )
+        logger.info(
+            "pareto_knn_aplicado",
+            n_knn=len(ctx.extra["recomendaciones_knn_xgb"]),
+        )
         return ctx
 
 
@@ -258,11 +313,11 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
 
     def execute(self, ctx: PredictContext) -> PredictContext:
         rules = ctx.extra["model_apriori"]["rules"]
-        perfil_productos = ctx.extra["perfil_productos"]
+        historial_ventas = ctx.extra["historial_ventas"]
         cliente_id = ctx.parameters.get("cliente_id")
         recomendaciones_knn = ctx.extra["recomendaciones_knn_xgb"]
 
-        productos_knn = set(recomendaciones_knn["nombre_producto"].tolist())
+        productos_knn = set(recomendaciones_knn["producto_id"].tolist())
 
         reglas_match = rules[rules["antecedent"].isin(productos_knn)].copy()
 
@@ -293,8 +348,8 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
         solo_nuevos = ctx.parameters.get("solo_nuevos", False)
         if solo_nuevos:
             productos_cliente = set(
-                perfil_productos[perfil_productos["cliente_id"] == cliente_id][
-                    "nombre_producto"
+                historial_ventas[historial_ventas["cliente_id"] == cliente_id][
+                    "producto_id"
                 ].unique()
             )
             mask = ~scores.index.isin(productos_cliente)
@@ -307,7 +362,7 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
             BuildFeaturesRequest(
                 candidatos=scores.index.tolist(),
                 cliente_id=ctx.parameters.get("cliente_id"),
-                perfil_productos=ctx.extra["perfil_productos"],
+                historial_ventas=ctx.extra["historial_ventas"],
                 segmento=ctx.extra["segmento"],
                 fuente_nueva="apriori",
             )
@@ -325,11 +380,11 @@ class AprioriBuildCandidatesStep(StepABC[PredictContext]):
 
 class AprioriRankAndPredictStep(StepABC[PredictContext]):
     """
-    Genera las recomendaciones Apriori+XGB combinando el score de las reglas
-    (confidence x lift) con la predicción de cantidad del XGBRegressor.
+    Genera las recomendaciones Apriori+RF combinando el score de las reglas
+    (confidence x lift) con la predicción de cantidad del RandomForestRegressor.
 
     Guarda en ctx.extra["recomendaciones_apriori_xgb"]: DataFrame con
-    nombre_producto, antecedente, cantidad_sugerida, score, fuente.
+    producto_id, antecedente, cantidad_sugerida, score, fuente.
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
@@ -338,6 +393,7 @@ class AprioriRankAndPredictStep(StepABC[PredictContext]):
         if df.empty:
             ctx.extra["recomendaciones_apriori_xgb"] = pd.DataFrame(
                 columns=[
+                    "producto_id",
                     "nombre_producto",
                     "antecedente",
                     "cantidad_sugerida",
@@ -352,8 +408,8 @@ class AprioriRankAndPredictStep(StepABC[PredictContext]):
         antecedente_map = ctx.extra["antecedente_apriori"]
         features = model_rf_cantidad["features"]
 
-        df["score"] = df["nombre_producto"].map(scores_apriori).fillna(0)
-        df["antecedente"] = df["nombre_producto"].map(antecedente_map)
+        df["score"] = df["producto_id"].map(scores_apriori).fillna(0)
+        df["antecedente"] = df["producto_id"].map(antecedente_map)
 
         df_cantidad = df.copy()
         df_cantidad[CAT_FEATURES] = model_rf_cantidad["encoder"].transform(
@@ -364,58 +420,18 @@ class AprioriRankAndPredictStep(StepABC[PredictContext]):
         ).round(2)
 
         recomendaciones = df[
-            ["nombre_producto", "antecedente", "cantidad_sugerida", "score", "_fuente"]
+            [
+                "producto_id",
+                "nombre_producto",
+                "antecedente",
+                "cantidad_sugerida",
+                "score",
+                "_fuente",
+            ]
         ].rename(columns={"_fuente": "fuente"})
         ctx.extra["recomendaciones_apriori_xgb"] = recomendaciones
         logger.info(
             "apriori_candidatos_con_cantidad", n_candidatos=len(recomendaciones)
-        )
-        return ctx
-
-
-class ParetoFilterStep(StepABC[PredictContext]):
-    """
-    Aplica la ley de Pareto sobre las recomendaciones de cada fuente (KNN y Apriori).
-
-    Para cada conjunto de recomendaciones:
-        1. Filtra productos con cantidad_sugerida menor a cantidad_minima.
-        2. Ordena por cantidad_sugerida descendente.
-        3. Calcula el porcentaje acumulado de cantidad_sugerida.
-        4. Retiene los productos que cubren el PARETO_THRESHOLD (20%) del volumen total.
-        5. Aplica top_n como techo máximo.
-
-    Parámetros configurables vía ctx.parameters:
-        - top_n (default 10): techo máximo de productos a retornar por fuente
-        - cantidad_minima (default 1.0): filtra productos con cantidad menor
-        - porcentaje_pareto (int 1-100, default 20): porcentaje del volumen total
-          de cantidad_sugerida que se quiere cubrir. Por ejemplo, 20 devuelve los
-          productos que juntos representan el 20% del volumen predicho.
-    """
-
-    def execute(self, ctx: PredictContext) -> PredictContext:
-        top_n = ctx.parameters.get("top_n", TOP_N)
-        cantidad_minima = ctx.parameters.get("cantidad_minima", CANTIDAD_MINIMA)
-        porcentaje_raw = ctx.parameters.get(
-            "porcentaje_pareto", PORCENTAJE_PARETO * 100
-        )
-        porcentaje_raw = max(1, min(100, int(porcentaje_raw)))
-        pareto_threshold = porcentaje_raw / 100
-
-        pareto_config = ParetoConfig(
-            top_n=top_n,
-            cantidad_minima=cantidad_minima,
-            porcentaje_volumen=pareto_threshold,
-        )
-        ctx.extra["recomendaciones_knn_xgb"] = apply_pareto(
-            ctx.extra["recomendaciones_knn_xgb"], pareto_config
-        )
-        ctx.extra["recomendaciones_apriori_xgb"] = apply_pareto(
-            ctx.extra["recomendaciones_apriori_xgb"], pareto_config
-        )
-        logger.info(
-            "pareto_filter_aplicado",
-            n_knn=len(ctx.extra["recomendaciones_knn_xgb"]),
-            n_apriori=len(ctx.extra["recomendaciones_apriori_xgb"]),
         )
         return ctx
 
@@ -429,7 +445,7 @@ class DestacadosStep(StepABC[PredictContext]):
     una fuente real (base de datos, API, etc.) este paso es el único que debe
     modificarse.
 
-    La lista es independiente del cliente y no pasa por KNN ni XGB.
+    La lista es independiente del cliente y no pasa por KNN ni RandomForest.
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
@@ -441,15 +457,32 @@ class DestacadosStep(StepABC[PredictContext]):
 class BuildResponseStep(StepABC[PredictContext]):
     """
     Ensambla la respuesta final combinando las tres fuentes de recomendación:
-        - knn_xgb: recomendaciones basadas en vecinos similares + XGBoost
-        - apriori_xgb: recomendaciones basadas en reglas de asociación + XGBoost
+        - knn_xgb: recomendaciones basadas en vecinos similares + RandomForest
+        - apriori_xgb: recomendaciones basadas en reglas de asociación + RandomForest
         - destacados: productos en oferta, liquidación o novedades
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
         knn = ctx.extra["recomendaciones_knn_xgb"]
-        apriori = ctx.extra["recomendaciones_apriori_xgb"]
-        destacados = ctx.extra["recomendaciones_destacados"]
+        if ctx.parameters.get("recomendacion_apriori", False):
+            apriori = ctx.extra["recomendaciones_apriori_xgb"]
+        else:
+            apriori = pd.DataFrame(
+                columns=[
+                    "producto_id",
+                    "nombre_producto",
+                    "antecedente",
+                    "cantidad_sugerida",
+                    "score",
+                    "fuente",
+                ]
+            )
+
+        if ctx.parameters.get("recomendacion_destacados", False):
+            destacados = ctx.extra["recomendaciones_destacados"]
+        else:
+            destacados = []
+
         ctx.data_response = {
             "knn_xgb": knn.to_dict(orient="records"),
             "apriori_xgb": apriori.to_dict(orient="records"),

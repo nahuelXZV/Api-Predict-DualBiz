@@ -9,3 +9,4 @@ logs/
 storage/models/*
 
 logs/
+/storage/data/consulta_completa.csv

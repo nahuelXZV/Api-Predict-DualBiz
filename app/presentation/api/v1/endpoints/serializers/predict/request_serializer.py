@@ -28,6 +28,14 @@ class PredictParametersSerializer(serializers.Serializer):
         max_value=100,
         help_text="Porcentaje de productos a conservar aplicando el filtro de Pareto (1-100).",
     )
+    recomendacion_apriori = serializers.BooleanField(
+        default=False,
+        help_text="Si es true, incluye recomendaciones basadas en reglas de asociación (Apriori).",
+    )
+    recomendacion_destacados = serializers.BooleanField(
+        default=False,
+        help_text="Si es true, incluye productos destacados.",
+    )
 
 
 class PredictRequestSerializer(serializers.Serializer):

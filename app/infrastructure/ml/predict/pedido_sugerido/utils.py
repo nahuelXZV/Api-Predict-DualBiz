@@ -44,31 +44,32 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
           globales del producto y los datos base del cliente como contexto.
 
     Args:
-        req: BuildFeaturesRequest con candidatos, cliente_id, perfil_productos,
+        req: BuildFeaturesRequest con candidatos, cliente_id, historial_ventas,
              segmento y fuente_nueva.
 
     Returns:
         DataFrame con una fila por candidato y todas las features requeridas.
     """
-    fecha_max = pd.to_datetime(req.perfil_productos["fecha_venta"]).max()
+    fecha_max = pd.to_datetime(req.historial_ventas["fecha_venta"]).max()
     mes_actual = fecha_max.month
 
-    historial_cliente = req.perfil_productos[
-        req.perfil_productos["cliente_id"] == req.cliente_id
+    historial_cliente = req.historial_ventas[
+        req.historial_ventas["cliente_id"] == req.cliente_id
     ]
     if historial_cliente.empty:
         return pd.DataFrame()
     ctx_base = historial_cliente.sort_values("fecha_venta").iloc[-1]
 
     filas = []
-    for producto in req.candidatos:
-        hist_prod = historial_cliente[historial_cliente["nombre_producto"] == producto]
-        prod_info = req.perfil_productos[
-            req.perfil_productos["nombre_producto"] == producto
+    for producto_id in req.candidatos:
+        hist_prod = historial_cliente[historial_cliente["producto_id"] == producto_id]
+        prod_info = req.historial_ventas[
+            req.historial_ventas["producto_id"] == producto_id
         ]
 
         if len(hist_prod) > 0:
             ultima = hist_prod.sort_values("fecha_venta").iloc[-1]
+            nombre_producto = ultima["nombre_producto"]
             promedio_historico = hist_prod["cantidad_vendida"].mean()
             promedio_ultimas_3 = hist_prod["cantidad_vendida"].tail(3).mean()
             dias_entre_compras = hist_prod["dias_entre_compras"].mean()
@@ -76,11 +77,14 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
             marca = ultima["marca"]
             linea_producto = ultima["linea_producto"]
             fuente = "historial_propio"
-            num_productos_distintos = int(hist_prod["nombre_producto"].nunique())
+            num_productos_distintos = int(hist_prod["producto_id"].nunique())
             importe_total_cliente = float(hist_prod["cantidad_vendida"].sum())
             frecuencia_promedio_cliente = float(hist_prod["dias_entre_compras"].mean())
-            cantidad_productos_comprados = int(hist_prod["nombre_producto"].count())
+            cantidad_productos_comprados = int(hist_prod["producto_id"].count())
         else:
+            nombre_producto = (
+                prod_info["nombre_producto"].iloc[0] if len(prod_info) > 0 else ""
+            )
             promedio_historico = (
                 float(prod_info["cantidad_vendida"].mean())
                 if len(prod_info) > 0
@@ -99,7 +103,7 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
             )
             fuente = req.fuente_nueva
             num_productos_distintos = (
-                int(prod_info["nombre_producto"].nunique()) if len(prod_info) > 0 else 0
+                int(prod_info["producto_id"].nunique()) if len(prod_info) > 0 else 0
             )
             importe_total_cliente = (
                 float(prod_info["cantidad_vendida"].sum())
@@ -115,7 +119,8 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
 
         filas.append(
             {
-                "nombre_producto": producto,
+                "producto_id": producto_id,
+                "nombre_producto": nombre_producto,
                 "marca": marca,
                 "linea_producto": linea_producto,
                 "clasificacion_cliente": ctx_base["clasificacion_cliente"],

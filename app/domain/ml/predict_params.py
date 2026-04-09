@@ -15,6 +15,6 @@ class ParetoConfig:
 class BuildFeaturesRequest:
     candidatos: list[str]
     cliente_id: Any
-    perfil_productos: pd.DataFrame
+    historial_ventas: pd.DataFrame
     segmento: int
     fuente_nueva: str = "vecinos"

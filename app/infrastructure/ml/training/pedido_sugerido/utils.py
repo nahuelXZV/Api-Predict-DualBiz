@@ -45,7 +45,7 @@ def calcular_nro_clusters_kmeans(
     return mejor_k
 
 
-def calcular_nro_vecinos_knn(data: np.ndarray, k_min: int = 3, k_max: int = 51) -> int:
+def calcular_nro_vecinos_knn(data: np.ndarray, k_min: int = 3, k_max: int = 25) -> int:
     """
     Determina el número óptimo de vecinos para KNN usando el método del codo
     sobre la curva de distancias promedio.
@@ -60,7 +60,7 @@ def calcular_nro_vecinos_knn(data: np.ndarray, k_min: int = 3, k_max: int = 51) 
     Args:
         data: Matriz de features ya escalada (n_samples, n_features).
         k_min: Número mínimo de vecinos a evaluar (default 3).
-        k_max: Número máximo de vecinos a evaluar (default 51, se ajusta al tamaño del dataset).
+        k_max: Número máximo de vecinos a evaluar (default 25, se ajusta al tamaño del dataset).
 
     Returns:
         int: Número óptimo de vecinos según el codo de la curva de distancias.
@@ -242,3 +242,49 @@ def extraer_producto(frozenset_producto: frozenset) -> str:
     """
     productos = list(frozenset_producto)
     return productos[0]
+
+
+def filtrar_canastas_por_soporte(
+    canastas: list[list], min_support: float
+) -> list[list]:
+    """
+    Elimina de las canastas los productos que no alcanzan el umbral de soporte,
+    antes de pasarlas al TransactionEncoder de mlxtend.
+
+    Sin este filtro, TransactionEncoder genera una columna por cada producto único
+    del dataset (pueden ser miles), causando un consumo de memoria inviable.
+    Los productos descartados aquí jamás formarían parte de un itemset frecuente,
+    por lo que no aportan información al modelo Apriori.
+
+    Args:
+        canastas: Lista de listas, una por cliente, con los productos que compró.
+        min_support: Fracción mínima de clientes que deben comprar un producto
+                     para que sea incluido (mismo valor usado en apriori()).
+
+    Returns:
+        Lista de canastas filtradas, excluyendo clientes que quedaron sin productos.
+    """
+    n_clientes = len(canastas)
+    umbral_frecuencia = int(min_support * n_clientes)
+
+    conteo_productos = {}
+    for canasta in canastas:
+        for producto in canasta:
+            conteo_productos[producto] = conteo_productos.get(producto, 0) + 1
+
+    productos_frecuentes = {
+        p for p, c in conteo_productos.items() if c >= umbral_frecuencia
+    }
+
+    canastas_filtradas = [
+        [p for p in canasta if p in productos_frecuentes] for canasta in canastas
+    ]
+    canastas_filtradas = [c for c in canastas_filtradas if len(c) > 0]
+
+    logger.info(
+        "apriori_productos_pre_filtrados",
+        productos_originales=len(conteo_productos),
+        productos_frecuentes=len(productos_frecuentes),
+        clientes_con_compras=len(canastas_filtradas),
+    )
+    return canastas_filtradas
