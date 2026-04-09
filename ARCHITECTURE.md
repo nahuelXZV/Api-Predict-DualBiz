@@ -241,7 +241,11 @@ PedidoSugeridoModel.predict(data)
 PredictContext + predict_pedido_sugerido_pipeline()
     │ ejecuta 10 steps en secuencia
     ▼
-ctx.data_response = { "knn_xgb": [...], "apriori_xgb": [...], "destacados": [...] }
+ctx.data_response = {
+    "knn_xgb":     [{ "producto_id", "nombre_producto", "cantidad_sugerida", "score", "fuente" }],
+    "apriori_xgb": [{ "producto_id", "nombre_producto", "antecedente", "cantidad_sugerida", "score", "fuente" }],
+    "destacados":  [...]
+}
     │ retorna DTO
     ▼
 PredictResponseDTO(predictions=..., success=True)
@@ -437,8 +441,10 @@ Recomienda productos a clientes basándose en tres fuentes:
 | Fuente | Técnica | Descripción |
 |---|---|---|
 | `knn_xgb` | KNN + RandomForest | Productos que compran clientes similares, cantidad predicha por RF |
-| `apriori_xgb` | Apriori + RandomForest | Productos relacionados por reglas de asociación, cantidad predicha por RF |
+| `apriori_xgb` | Apriori + RandomForest | Expande los productos KNN-Pareto con reglas de asociación, cantidad predicha por RF |
 | `destacados` | Lista estática | Ofertas y liquidaciones configurables |
+
+El identificador de producto en todo el pipeline es **`producto_id`** (no `nombre_producto`). El nombre se incluye en la respuesta como campo adicional pero no se usa como clave de lookup.
 
 ### Artefactos que guarda el modelo
 
@@ -454,18 +460,19 @@ Al entrenar, se serializa un `.pkl` con esta estructura:
             "feats_num": [...],             # nombres features numéricas
             "cat_features": [...],          # nombres features categóricas
             "customers": [...],             # lista ordenada de cliente_ids
-            "data": DataFrame,             # perfil agregado por cliente
-            "perfil_pivot": DataFrame,     # matriz cliente × producto
+            "data": DataFrame,             # perfil agregado por cliente (para lookup)
         },
         "model_apriori": {
             "rules": DataFrame,            # reglas A→B con confidence, lift, support
+                                           # indexadas por producto_id (no nombre)
         },
         "model_rf_cantidad": {
             "model": RandomForestRegressor, # predice cantidad vendida
             "encoder": OrdinalEncoder,      # encoding para RF
             "features": [...],              # nombres de features
         },
-        "perfil_productos": DataFrame,     # historial completo de transacciones
+        "historial_ventas": DataFrame,     # historial slim de transacciones (13 columnas)
+                                           # solo las columnas necesarias en predicción
     }
 }
 ```
@@ -473,29 +480,38 @@ Al entrenar, se serializa un `.pkl` con esta estructura:
 ### Steps de entrenamiento
 
 ```
-LoadDataStep              → carga datos crudos del datasource
-EdaCleanDataStep          → limpia nulos, normaliza nombres de columnas
-CalculoAtributosDerivadosStep → calcula 15+ features (recencia, frecuencia, etc.)
-ClusteringKMeansStep      → segmenta clientes (k óptimo por Silhouette Score)
-VecinosCercanosKnnStep    → entrena KNN (n óptimo por método del codo)
-ConjuntoReglasAprioriStep → genera reglas de asociación entre productos
-PrepareDataArbolesStep    → construye tabla de entrenamiento para RF
+LoadDataStep                    → carga datos crudos del datasource
+EdaCleanDataStep                → limpia nulos, normaliza nombres de columnas
+CalculoAtributosDerivadosStep   → calcula 15+ features (recencia, frecuencia, etc.)
+ClusteringKMeansStep            → segmenta clientes (k óptimo por Silhouette Score)
+                                   búsqueda de k con 30% del dataset (SAMPLE_FRAC_PARAMS)
+VecinosCercanosKnnStep          → entrena KNN (n óptimo por método del codo)
+                                   búsqueda de n con 30% del dataset; sin perfil_pivot
+ConjuntoReglasAprioriStep       → genera reglas de asociación entre productos
+                                   pre-filtra canastas por soporte mínimo antes de TransactionEncoder
+                                   max_len=2 para evitar explosión combinatorial de memoria
+PrepareDataArbolesStep          → construye tabla de entrenamiento para RF con producto_id
 EnsembleArbolesRandomForestStep → entrena RF con RandomizedSearchCV
-SaveModelStep             → serializa todos los artefactos a .pkl
-RegistryModelStep         → registra modelo en memoria para predicciones
+                                   búsqueda de hiperparámetros con 30% del dataset
+SaveModelStep                   → serializa artefactos a .pkl; historial_ventas con solo 13 columnas
+RegistryModelStep               → registra modelo en memoria para predicciones
 ```
 
 ### Steps de predicción
 
+El pipeline aplica **Pareto sobre KNN antes de Apriori**: Apriori solo expande los mejores productos que ya recomendó KNN, no todo el historial del cliente.
+
 ```
-LoadModelStep             → desempaqueta artefactos del .pkl cargado
-ValidateClienteStep       → verifica cliente_id existe en historial
-KnnFindNeighborsStep      → encuentra clientes similares con cosine distance
-KnnBuildCandidatesStep    → construye candidatos desde historial de vecinos
-KnnRankAndPredictStep     → asigna score + predice cantidad con RF
-AprioriBuildCandidatesStep → construye candidatos desde reglas Apriori
-AprioriRankAndPredictStep  → asigna score + predice cantidad con RF
-ParetoFilterStep           → filtra por Pareto (top_n, cantidad_minima, %)
+LoadModelStep              → desempaqueta artefactos del .pkl cargado
+ValidateClienteStep        → verifica cliente_id existe en historial
+KnnFindNeighborsStep       → encuentra clientes similares con cosine distance
+KnnBuildCandidatesStep     → construye candidatos desde historial de vecinos (groupby, sin pivot)
+KnnRankAndPredictStep      → asigna score + predice cantidad con RF
+ParetoFilterStep           → filtra KNN por Pareto (top_n, cantidad_minima, %)
+                              resultado es la entrada de antecedentes para Apriori
+AprioriBuildCandidatesStep → busca reglas cuyo antecedente sea un producto KNN-Pareto
+                              excluye siempre los productos que KNN ya recomendó
+AprioriRankAndPredictStep  → asigna score (confidence × lift) + predice cantidad con RF
 DestacadosStep             → agrega productos destacados
 BuildResponseStep          → ensambla respuesta final
 ```
