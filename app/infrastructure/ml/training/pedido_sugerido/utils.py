@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from app.domain.core.logging import logger
 from app.domain.ml.training_params import SearchCVConfig
 from sklearn.cluster import KMeans
@@ -84,64 +83,6 @@ def calcular_nro_vecinos_knn(data: np.ndarray, k_min: int = 3, k_max: int = 25) 
 
     logger.info("knn_vecinos_optimos", k=k_optimo)
     return k_optimo
-
-
-def calcular_mejores_params_xgb(
-    X: pd.DataFrame,
-    y: pd.Series,
-    config: SearchCVConfig = SearchCVConfig(),
-) -> dict:
-    """
-    Busca los mejores hiperparámetros para XGBRegressor usando búsqueda
-    aleatoria con validación cruzada (RandomizedSearchCV).
-
-    En lugar de probar todas las combinaciones posibles (GridSearch),
-    muestrea aleatoriamente `n_iter` combinaciones del espacio de búsqueda
-    y evalúa cada una con `cv` folds. Devuelve la combinación con menor
-    error cuadrático medio (RMSE). Es el enfoque estándar cuando el espacio
-    de hiperparámetros es grande y GridSearch sería prohibitivo.
-
-    Args:
-        X: DataFrame de features ya codificadas (sin valores nulos).
-        y: Serie con el target (cantidad_vendida).
-        n_iter: Número de combinaciones aleatorias a evaluar (default 30).
-                Más alto = más preciso pero más lento.
-        cv: Número de folds para la validación cruzada (default 3).
-        random_state: Semilla para reproducibilidad (default 42).
-
-    Returns:
-        dict: Mejores hiperparámetros encontrados, listos para pasar
-              directamente a XGBRegressor(**resultado).
-    """
-    param_space = {
-        "n_estimators": [100, 200, 300, 500],
-        "learning_rate": [0.01, 0.05, 0.1, 0.2],
-        "max_depth": [3, 4, 5, 6, 8],
-        "subsample": [0.6, 0.7, 0.8, 1.0],
-        "colsample_bytree": [0.6, 0.7, 0.8, 1.0],
-        "min_child_weight": [1, 3, 5],
-        "gamma": [0, 0.1, 0.3],
-    }
-
-    model = xgb.XGBRegressor(random_state=config.random_state, verbosity=0)
-
-    search = RandomizedSearchCV(
-        estimator=model,
-        param_distributions=param_space,
-        n_iter=config.n_iter,
-        scoring="neg_root_mean_squared_error",
-        cv=config.cv,
-        random_state=config.random_state,
-        n_jobs=-1,
-    )
-    search.fit(X, y)
-
-    logger.info(
-        "xgb_params_optimos",
-        params=search.best_params_,
-        rmse_cv=round(-search.best_score_, 4),
-    )
-    return search.best_params_
 
 
 def calcular_mejores_params_rf(
