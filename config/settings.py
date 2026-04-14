@@ -1,6 +1,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+from app.infrastructure.db.django_db_settings import get_databases
 
 load_dotenv()
 
@@ -52,14 +53,13 @@ TEMPLATES = [
     },
 ]
 
+MIGRATION_MODULES = {
+    "app": "app.infrastructure.db.migrations",
+}
 WSGI_APPLICATION = "config.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
+
+DATABASES = get_databases()
 
 LANGUAGE_CODE = "es-bo"
 

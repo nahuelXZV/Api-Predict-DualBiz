@@ -10,7 +10,8 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import OrdinalEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
-
+from app.domain.core.config import tz_now
+from app.domain.models import VersionModelo
 from app.domain.core.logging import logger
 from app.domain.ml.abstractions.data_source_abc import DataSourceABC
 from app.domain.ml.abstractions.step_abc import StepABC
@@ -224,7 +225,9 @@ class ClusteringKMeansStep(StepABC[TrainingContext]):
 
         scaler_km = StandardScaler()
         x_km = scaler_km.fit_transform(data_km[feats_km])
-        muestra_km = pd.DataFrame(x_km).sample(frac=SAMPLE_FRAC_PARAMS, random_state=42).values
+        muestra_km = (
+            pd.DataFrame(x_km).sample(frac=SAMPLE_FRAC_PARAMS, random_state=42).values
+        )
         nro_clusters = calcular_nro_clusters_kmeans(muestra_km)
 
         model_km = KMeans(
@@ -330,7 +333,9 @@ class VecinosCercanosKnnStep(StepABC[TrainingContext]):
         x_knn = np.hstack([x_num_knn, x_cat_knn])
 
         n_muestra = max(100, int(len(x_knn) * SAMPLE_FRAC_PARAMS))
-        indices_muestra = np.random.default_rng(42).choice(len(x_knn), size=n_muestra, replace=False)
+        indices_muestra = np.random.default_rng(42).choice(
+            len(x_knn), size=n_muestra, replace=False
+        )
         muestra_knn = x_knn[indices_muestra]
         n_neighbors = calcular_nro_vecinos_knn(muestra_knn)
         model_knn = NearestNeighbors(n_neighbors=n_neighbors, metric="cosine")
@@ -564,7 +569,7 @@ class SaveModelStep(StepABC[TrainingContext]):
             "historial_ventas": ctx.clean_data[HISTORIAL_VENTAS_COLS],
         }
 
-        path_model = f"{MODEL_PATH_BASE}/modelo_{ctx.model_name}_{ctx.version}.pkl"
+        path_model = f"{MODEL_PATH_BASE}modelo_{ctx.model_name}_{ctx.version}.pkl"
         joblib.dump({"artefactos": artefactos}, str(path_model))
 
         ctx.extra["path_model"] = path_model
@@ -582,6 +587,7 @@ class RegistryModelStep(StepABC[TrainingContext]):
     Carga el modelo recién guardado desde disco y lo registra en el
     model_registry en memoria, dejándolo disponible para el pipeline
     de predicción sin necesidad de reiniciar el servidor.
+    También persiste los metadatos del entrenamiento en VersionModelo.
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -603,4 +609,28 @@ class RegistryModelStep(StepABC[TrainingContext]):
             name=ctx.model_name,
             model=model,
         )
+
+        self._guardar_version_modelo(ctx, path_model)
+
         return ctx
+
+    def _guardar_version_modelo(self, ctx: TrainingContext, path_model: str) -> None:
+        cantidad_clientes = 0
+        cantidad_productos = 0
+        if ctx.clean_data is not None:
+            cantidad_clientes = ctx.clean_data["cliente_id"].nunique()
+            cantidad_productos = ctx.clean_data["producto_id"].nunique()
+
+        VersionModelo.objects.filter(nombre_modelo=ctx.model_name).update(activo=False)
+
+        VersionModelo.objects.create(
+            nombre_modelo=ctx.model_name,
+            version=ctx.version,
+            entrenado_en=tz_now(),
+            ruta_pkl=path_model,
+            tipo_fuente_datos="historial_ventas",
+            cantidad_clientes=cantidad_clientes,
+            cantidad_productos=cantidad_productos,
+            hiperparametros=ctx.hyperparams,
+            activo=True,
+        )

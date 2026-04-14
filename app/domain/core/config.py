@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     path_models: str = "storage/models"
     path_data: str = "storage/data"
 
+    app_db_driver: str = "ODBC Driver 17 for SQL Server"
+    app_db_server: str = ""
+    app_db_database: str = ""
+    app_db_user: str = ""
+    app_db_password: str = ""
+
     ml_db_driver: str = "ODBC Driver 17 for SQL Server"
     ml_db_server: str = ""
     ml_db_database: str = ""
