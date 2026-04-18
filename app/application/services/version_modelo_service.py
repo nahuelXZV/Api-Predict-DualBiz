@@ -9,8 +9,10 @@ from app.infrastructure.db.repositories.version_modelo_repository import (
 class VersionModeloService:
     def __init__(self, repo: RepositoryABC[VersionModelo]) -> None:
         self._repo = repo
-    
-    def save_new_version(self, ctx: TrainingContext, path_model: str) -> None:
+
+    def save_new_version(
+        self, ctx: TrainingContext, path_model: str, hyperparams: dict
+    ) -> None:
         cantidad_clientes = 0
         cantidad_productos = 0
         if ctx.clean_data is not None:
@@ -25,7 +27,8 @@ class VersionModeloService:
             tipo_fuente_datos="historial_ventas",
             cantidad_clientes=cantidad_clientes,
             cantidad_productos=cantidad_productos,
-            hiperparametros=ctx.hyperparams,
+            hiperparametros=hyperparams,
+            activo=True,
         )
 
 

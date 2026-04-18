@@ -10,7 +10,10 @@ from app.domain.ml.model_registry import ModelRegistry, model_registry
 from app.domain.ml.pipeline_context import TrainingContext
 from app.application.ml.pipeline_registry import get_training_pipeline
 from app.infrastructure.data_sources.data_source_factory import DataSourceFactory
-from app.application.services.version_modelo_service import VersionModeloService, version_modelo_service
+from app.application.services.version_modelo_service import (
+    VersionModeloService,
+    version_modelo_service,
+)
 
 
 class ModelManager:
@@ -25,7 +28,9 @@ class ModelManager:
         self._version_service = version_service
 
     def train(self, request: TrainRequestDTO) -> TrainResponseDTO:
-        logger.info("manager_train_start", model=request.model_name, version=request.version)
+        logger.info(
+            "manager_train_start", model=request.model_name, version=request.version
+        )
         try:
             PipelineClass = get_training_pipeline(request.model_name)
             data_source = self._factory.build(request.data_source_config)
@@ -43,7 +48,9 @@ class ModelManager:
             if not result.has_errors:
                 path_model = result.extra.get("path_model")
                 if path_model:
-                    self._version_service.save_new_version(result, str(path_model))
+                    self._version_service.save_new_version(
+                        result, str(path_model), request.hyperparams
+                    )
 
             return TrainResponseDTO(
                 model_name=result.model_name,
