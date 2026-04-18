@@ -18,4 +18,4 @@ class LogTareaProgramada(models.Model):
     ejecutado_en = models.DateTimeField()
 
     class Meta:
-        db_table = "ml_log_tarea_programada"
+        db_table = '[ml].[log_tarea_programada]'

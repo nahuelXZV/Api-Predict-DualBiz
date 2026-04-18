@@ -2,7 +2,8 @@ import pandas as pd
 
 from app.domain.core.config import settings
 from app.domain.core.logging import logger
-from app.domain.ml.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.infrastructure.data_sources.data_source_registry import register_datasource  # noqa: F401
 
 
 class CsvDataSourceStrategy(DataSourceABC):
@@ -32,3 +33,15 @@ class CsvDataSourceStrategy(DataSourceABC):
         df = pd.read_csv(path_completo, sep=self._separator, encoding=self._encoding)
         logger.info("csv_datasource_cargado", filas=len(df), columnas=df.shape[1])
         return df
+
+
+@register_datasource("csv")
+def _build(params: dict) -> CsvDataSourceStrategy:
+    path = params.get("path") or ""
+    if not path:
+        raise ValueError("El datasource 'csv' requiere el parámetro 'path'.")
+    return CsvDataSourceStrategy(
+        path,
+        separator=params.get("separator", ","),
+        encoding=params.get("encoding", "utf-8"),
+    )

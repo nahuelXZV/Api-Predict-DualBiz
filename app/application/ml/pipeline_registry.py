@@ -1,7 +1,7 @@
 from typing import Callable
 
-from app.domain.ml.abstractions.pipeline_base import PipelineBase
-from app.domain.ml.abstractions.pipeline_base import TrainingPipelineBase
+from app.domain.abstractions.pipeline_base import PipelineBase
+from app.domain.abstractions.pipeline_base import TrainingPipelineBase
 
 _PIPELINES: dict[str, type[PipelineBase]] = {}
 

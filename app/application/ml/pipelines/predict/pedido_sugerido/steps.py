@@ -3,16 +3,16 @@ import numpy as np
 
 from app.domain.core.logging import logger
 from app.domain.ml.pipeline_context import PredictContext
-from app.domain.ml.abstractions.step_abc import StepABC
+from app.domain.abstractions.step_abc import StepABC
 from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
-from app.infrastructure.ml.predict.pedido_sugerido.constants import (
+from app.application.ml.pipelines.predict.pedido_sugerido.constants import (
     PRODUCTOS_DESTACADOS,
     CAT_FEATURES,
     CANTIDAD_MINIMA,
     TOP_N,
     PORCENTAJE_PARETO,
 )
-from app.infrastructure.ml.predict.pedido_sugerido.utils import (
+from app.application.ml.pipelines.predict.pedido_sugerido.utils import (
     apply_pareto,
     build_features_candidatos,
 )

@@ -2,14 +2,14 @@ import joblib
 
 from app.domain.core.exceptions import ModelNotLoadedError
 from app.domain.ml.pipeline_context import PredictContext
-from app.domain.ml.abstractions.ml_model_abc import MLModelABC
+from app.domain.abstractions.ml_model_abc import MLModelABC
 from app.domain.ml.model_metadata import ModelMetadata
-from app.infrastructure.ml.predict.pedido_sugerido.pipeline import (
+from app.application.ml.pipelines.predict.pedido_sugerido.pipeline import (
     PedidoSugeridoPredictPipeline,
 )
 
 
-class PedidoSugeridoModel(MLModelABC):
+class PedidoSugerido(MLModelABC):
     def __init__(self, metadata: ModelMetadata) -> None:
         super().__init__(metadata)
 

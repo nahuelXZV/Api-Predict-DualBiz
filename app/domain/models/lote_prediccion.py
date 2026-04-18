@@ -17,4 +17,4 @@ class LotePrediccion(models.Model):
     estado = models.CharField(max_length=20, default="generando")
 
     class Meta:
-        db_table = "ml_lote_prediccion"
+        db_table = '[ml].[lote_prediccion]'

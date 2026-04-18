@@ -1,8 +1,10 @@
 import pandas as pd
 import pyodbc
 
+from app.domain.core.config import settings
 from app.domain.core.logging import logger
-from app.domain.ml.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.infrastructure.data_sources.data_source_registry import register_datasource  # noqa: F401
 
 
 class SqlServerDataSourceStrategy(DataSourceABC):
@@ -28,3 +30,14 @@ class SqlServerDataSourceStrategy(DataSourceABC):
             df = pd.read_sql(self._query, conn)
         logger.info("sqlserver_datasource_cargado", filas=len(df), columnas=df.shape[1])
         return df
+
+
+@register_datasource("sqlserver")
+def _build(params: dict) -> SqlServerDataSourceStrategy:
+    conn_str = params.get("connection_string") or settings.ml_db_connection_string
+    query = params.get("query") or ""
+    if not query:
+        raise ValueError(
+            "El datasource 'sqlserver' requiere el parámetro 'params.query'."
+        )
+    return SqlServerDataSourceStrategy(conn_str, query)

@@ -23,4 +23,4 @@ class VersionModelo(models.Model):
     activo = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "ml_version_modelo"
+        db_table = '[ml].[version_modelo]'

@@ -15,4 +15,4 @@ class MetricaModelo(models.Model):
     calculado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "ml_metrica_modelo"
+        db_table = '[ml].[metrica_modelo]'

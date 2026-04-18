@@ -17,4 +17,4 @@ class EjecucionTareaProgramada(models.Model):
     mensaje_error = models.TextField(blank=True, null=True)
 
     class Meta:
-        db_table = "ml_ejecucion_tarea_programada"
+        db_table = '[ml].[ejecucion_tarea_programada]'

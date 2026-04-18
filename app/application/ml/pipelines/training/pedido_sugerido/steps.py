@@ -10,17 +10,15 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import OrdinalEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
-from app.domain.core.config import tz_now
-from app.domain.models import VersionModelo
 from app.domain.core.logging import logger
-from app.domain.ml.abstractions.data_source_abc import DataSourceABC
-from app.domain.ml.abstractions.step_abc import StepABC
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.step_abc import StepABC
 from app.domain.ml.pipeline_context import TrainingContext
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
-from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
 from app.domain.ml.training_params import SearchCVConfig
-from app.infrastructure.ml.training.pedido_sugerido.constants import (
+from app.application.ml.pipelines.training.pedido_sugerido.constants import (
     CAT_FEATURES,
     HISTORIAL_VENTAS_COLS,
     RF_CANTIDAD_TARGET,
@@ -28,7 +26,7 @@ from app.infrastructure.ml.training.pedido_sugerido.constants import (
     MODEL_PATH_BASE,
     SAMPLE_FRAC_PARAMS,
 )
-from app.infrastructure.ml.training.pedido_sugerido.utils import (
+from app.application.ml.pipelines.training.pedido_sugerido.utils import (
     calcular_mejores_params_rf,
     calcular_nro_clusters_kmeans,
     calcular_nro_vecinos_knn,
@@ -587,7 +585,6 @@ class RegistryModelStep(StepABC[TrainingContext]):
     Carga el modelo recién guardado desde disco y lo registra en el
     model_registry en memoria, dejándolo disponible para el pipeline
     de predicción sin necesidad de reiniciar el servidor.
-    También persiste los metadatos del entrenamiento en VersionModelo.
     """
 
     def execute(self, ctx: TrainingContext) -> TrainingContext:
@@ -602,7 +599,7 @@ class RegistryModelStep(StepABC[TrainingContext]):
             version=ctx.version,
             path_model=path_model,
         )
-        model = PedidoSugeridoModel(metadata=meta_data)
+        model = PedidoSugerido(metadata=meta_data)
         model.load(path_model)
 
         model_registry.register(
@@ -610,27 +607,4 @@ class RegistryModelStep(StepABC[TrainingContext]):
             model=model,
         )
 
-        self._guardar_version_modelo(ctx, path_model)
-
         return ctx
-
-    def _guardar_version_modelo(self, ctx: TrainingContext, path_model: str) -> None:
-        cantidad_clientes = 0
-        cantidad_productos = 0
-        if ctx.clean_data is not None:
-            cantidad_clientes = ctx.clean_data["cliente_id"].nunique()
-            cantidad_productos = ctx.clean_data["producto_id"].nunique()
-
-        VersionModelo.objects.filter(nombre_modelo=ctx.model_name).update(activo=False)
-
-        VersionModelo.objects.create(
-            nombre_modelo=ctx.model_name,
-            version=ctx.version,
-            entrenado_en=tz_now(),
-            ruta_pkl=path_model,
-            tipo_fuente_datos="historial_ventas",
-            cantidad_clientes=cantidad_clientes,
-            cantidad_productos=cantidad_productos,
-            hiperparametros=ctx.hyperparams,
-            activo=True,
-        )

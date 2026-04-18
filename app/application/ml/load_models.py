@@ -4,7 +4,7 @@ from app.domain.core.config import settings
 from app.domain.core.logging import logger
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
-from app.infrastructure.ml.models.pedido_sugerido_model import PedidoSugeridoModel
+from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
 
 _MODELS_TO_LOAD = [
     "pedido_sugerido",
@@ -41,7 +41,7 @@ def load_initial_models() -> None:
 
         try:
             meta = ModelMetadata(name=model_name, version=version, path_model=str(path))
-            model = PedidoSugeridoModel(metadata=meta)
+            model = PedidoSugerido(metadata=meta)
             model.load(str(path))
             model_registry.register(name=model_name, model=model)
             logger.info(

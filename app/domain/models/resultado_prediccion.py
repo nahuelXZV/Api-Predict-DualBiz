@@ -18,4 +18,4 @@ class ResultadoPrediccion(models.Model):
     posicion = models.PositiveSmallIntegerField()
 
     class Meta:
-        db_table = "ml_resultado_prediccion"
+        db_table = '[ml].[resultado_prediccion]'

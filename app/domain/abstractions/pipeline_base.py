@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
-from app.domain.ml.abstractions.data_source_abc import DataSourceABC
-from app.domain.ml.abstractions.step_abc import StepABC
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.step_abc import StepABC
 from app.domain.core.logging import logger
 from app.domain.ml.pipeline_context import BaseContext
 

@@ -13,4 +13,4 @@ class TareaProgramada(models.Model):
     actualizado_en = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "ml_tarea_programada"
+        db_table = '[ml].[tarea_programada]'
