@@ -34,6 +34,9 @@ class VersionModeloRepository(RepositoryABC[VersionModelo]):
             nombre_modelo=nombre_modelo, activo=True
         ).first()
 
+    def list_activos(self) -> list[VersionModelo]:
+        return list(VersionModelo.objects.filter(activo=True))
+
     def deactivate_all(self, model_name: str) -> None:
         VersionModelo.objects.filter(nombre_modelo=model_name).update(activo=False)
 
