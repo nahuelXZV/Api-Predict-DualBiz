@@ -40,6 +40,7 @@ class ModelManager:
                 version=request.version,
                 parameters=request.parameters,
                 tarea_programada_id=request.tarea_programada_id,
+                ejecucion_id=request.ejecucion_id,
             )
 
             pipeline = PipelineClass()

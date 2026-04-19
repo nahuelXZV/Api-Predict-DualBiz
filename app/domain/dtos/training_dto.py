@@ -8,6 +8,7 @@ class TrainRequestDTO:
     version: str = "1.0"
     parameters: dict[str, Any] = field(default_factory=dict)
     tarea_programada_id: int | None = None
+    ejecucion_id: int | None = None
 
 
 @dataclass

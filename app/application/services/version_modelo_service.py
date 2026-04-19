@@ -18,6 +18,7 @@ class VersionModeloService:
             ruta_pkl=path_model,
             tipo_fuente_datos="historial_ventas",
             parametros=parameters,
+            ejecucion_tarea_programada_id=ctx.ejecucion_id,
             activo=True,
         )
 

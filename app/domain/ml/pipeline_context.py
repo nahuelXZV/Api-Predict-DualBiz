@@ -20,6 +20,7 @@ class BaseContext:
     errors: list[str] = field(default_factory=list)
 
     tarea_programada_id: int | None = None
+    ejecucion_id: int | None = None
 
     @property
     def has_errors(self) -> bool:

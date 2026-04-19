@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.domain.core.config import settings
 from app.domain.core.logging import logger
 from app.application.services.job_service import JobService, job_service
 from app.infrastructure.db.repositories.tarea_programada_repository import (
@@ -12,7 +13,7 @@ class JobScheduler:
     def __init__(
         self, service: JobService, tarea_repo: TareaProgramadaRepository
     ) -> None:
-        self._scheduler = BackgroundScheduler(timezone="UTC")
+        self._scheduler = BackgroundScheduler(timezone=settings.timezone)
         self._service = service
         self._tarea_repo = tarea_repo
 
@@ -27,7 +28,7 @@ class JobScheduler:
                 self._scheduler.add_job(
                     self._service.ejecutar,
                     trigger=CronTrigger.from_crontab(
-                        tarea.cron_schedule, timezone="UTC"
+                        tarea.cron_schedule, timezone=settings.timezone
                     ),
                     args=[tarea.id],
                     id=f"tarea_{tarea.id}",

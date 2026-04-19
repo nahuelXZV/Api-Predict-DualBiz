@@ -7,7 +7,7 @@ from app.domain.models.tarea_programada import TareaProgramada
 
 
 @register_job(TipoJob.TRAINING)
-def handle(tarea_programada: TareaProgramada) -> None:
+def handle(tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
     params = tarea_programada.get_params()
 
     request = TrainRequestDTO(
@@ -15,6 +15,7 @@ def handle(tarea_programada: TareaProgramada) -> None:
         version=tz_now().strftime("%Y.%m.%d"),
         parameters=params,
         tarea_programada_id=tarea_programada.id,
+        ejecucion_id=ejecucion_id,
     )
     result = model_manager.train(request)
     if not result.success:

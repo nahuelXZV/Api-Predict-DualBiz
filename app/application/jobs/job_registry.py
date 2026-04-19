@@ -7,18 +7,18 @@ from app.domain.utils.enums import TipoJob
 if TYPE_CHECKING:
     from app.domain.models.tarea_programada import TareaProgramada
 
-_HANDLERS: dict[TipoJob, Callable[[TareaProgramada], None]] = {}
+_HANDLERS: dict[TipoJob, Callable[[TareaProgramada, int], None]] = {}
 
 
 def register_job(tipo: TipoJob) -> Callable:
-    def decorator(fn: Callable[[TareaProgramada], None]) -> Callable:
+    def decorator(fn: Callable[[TareaProgramada, int], None]) -> Callable:
         _HANDLERS[tipo] = fn
         return fn
 
     return decorator
 
 
-def get_handler(tipo: TipoJob) -> Callable[[TareaProgramada], None]:
+def get_handler(tipo: TipoJob) -> Callable[[TareaProgramada, int], None]:
     handler = _HANDLERS.get(tipo)
     if handler is None:
         available = [t.value for t in _HANDLERS]

@@ -39,7 +39,7 @@ class JobService:
         ejecucion = self._ejecucion_repo.create_inicio(tarea_id, disparado_por.value)
 
         try:
-            self._runner.run(TipoJob(tarea.tipo_job), tarea)
+            self._runner.run(TipoJob(tarea.tipo_job), tarea, ejecucion.id)
             self._ejecucion_repo.marcar_exitosa(ejecucion.id)
             logger.info("job_exitoso", tarea=tarea.nombre, ejecucion_id=ejecucion.id)
         except Exception as e:

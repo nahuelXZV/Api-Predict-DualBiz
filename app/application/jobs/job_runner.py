@@ -6,9 +6,9 @@ from app.domain.models.tarea_programada import TareaProgramada
 
 
 class JobRunner:
-    def run(self, tipo_job: TipoJob, tarea_programada: TareaProgramada) -> None:
+    def run(self, tipo_job: TipoJob, tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
         handler = get_handler(tipo_job)
-        handler(tarea_programada)
+        handler(tarea_programada, ejecucion_id)
 
 
 job_runner = JobRunner()
