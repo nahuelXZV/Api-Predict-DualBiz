@@ -1,6 +1,6 @@
 from django.db import models
-from app.domain.abstractions.base_model_abc import BaseModelABC
-from .lote_prediccion import LotePrediccion
+from app.domain.models.base_model_abc import BaseModelABC
+from app.domain.models.lote_prediccion import LotePrediccion
 
 
 class ResultadoPrediccion(BaseModelABC):

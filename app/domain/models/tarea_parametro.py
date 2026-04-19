@@ -1,5 +1,5 @@
 from django.db import models
-from app.domain.abstractions.base_model_abc import BaseModelABC
+from app.domain.models.base_model_abc import BaseModelABC
 
 
 class TareaParametro(BaseModelABC):

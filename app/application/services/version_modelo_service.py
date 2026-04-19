@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from app.domain.ml.pipeline_context import TrainingContext
 from app.infrastructure.db.repositories.version_modelo_repository import (
     VersionModeloRepository,
@@ -8,6 +10,7 @@ class VersionModeloService:
     def __init__(self, repo: VersionModeloRepository) -> None:
         self._repo = repo
 
+    @transaction.atomic
     def save_new_version(
         self, ctx: TrainingContext, path_model: str, parameters: dict
     ) -> None:

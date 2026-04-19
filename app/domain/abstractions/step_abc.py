@@ -22,7 +22,7 @@ class StepABC(ABC, Generic[T]):
         except Exception as e:
             error_msg = str(e)
             ctx.errors.append(error_msg)
-            logger.error("step_failed", step=self.name, model=ctx.model_name, error=error_msg)
+            logger.error("step_failed", step=self.name, model=ctx.model_name, error=error_msg, exc_info=True)
         finally:
             duracion = round(time.monotonic() - inicio, 3)
             estado = "fallido" if error_msg else "exitoso"

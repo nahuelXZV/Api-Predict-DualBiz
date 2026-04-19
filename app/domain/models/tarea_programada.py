@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django.db import models
-from app.domain.abstractions.base_model_abc import BaseModelABC
+from app.domain.models.base_model_abc import BaseModelABC
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
