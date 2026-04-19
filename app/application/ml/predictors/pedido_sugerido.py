@@ -24,8 +24,7 @@ class PedidoSugerido(MLModelABC):
         ctx = PredictContext(
             model_name=self.metadata.name,
             version=self.metadata.version,
-            hyperparams=self.metadata.hyperparams,
-            extra=self.metadata.extra,
+            extra={**self.metadata.extra, "hyperparams": self.metadata.hyperparams},
             model=self._model,
             parameters=data,
         )
