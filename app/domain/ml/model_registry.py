@@ -8,7 +8,7 @@ from app.domain.core.exceptions import (
     ModelNotFoundError,
     ModelNotReadyError,
 )
-from app.domain.ml.abstractions.ml_model_abc import MLModelABC
+from app.domain.abstractions.ml_model_abc import MLModelABC
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.core.logging import logger
 

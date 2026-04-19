@@ -1,3 +1,9 @@
-from django.db import models
-
-# Registrar aquí los modelos Django ORM cuando se necesite persistencia.
+from app.domain.models import (
+    TareaProgramada,
+    EjecucionTareaProgramada,
+    LogTareaProgramada,
+    VersionModelo,
+    MetricaModelo,
+    LotePrediccion,
+    ResultadoPrediccion,
+)

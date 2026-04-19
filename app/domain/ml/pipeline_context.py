@@ -12,12 +12,15 @@ class BaseContext:
     model_name: str = ""
     version: str = ""
     data_path: str = ""
-    hyperparams: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
     extra: dict[str, Any] = field(default_factory=dict)
     started_at: datetime = field(default_factory=tz_now)
     steps_executed: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+
+    tarea_programada_id: int | None = None
+    ejecucion_id: int | None = None
 
     @property
     def has_errors(self) -> bool:
