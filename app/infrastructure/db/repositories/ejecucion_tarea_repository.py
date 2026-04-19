@@ -28,12 +28,18 @@ class EjecucionTareaRepository(RepositoryABC[EjecucionTareaProgramada]):
         EjecucionTareaProgramada.objects.filter(pk=id).delete()
 
     def create_inicio(
-        self, tarea_id: int, disparado_por: str
+        self,
+        tarea_id: int,
+        disparado_por: str,
+        numero_intento: int = 1,
+        ejecucion_original_id: int | None = None,
     ) -> EjecucionTareaProgramada:
         return EjecucionTareaProgramada.objects.create(
             tarea_programada_id=tarea_id,
             disparado_por=disparado_por,
             estado=EstadoEjecucion.EJECUTANDO.value,
+            numero_intento=numero_intento,
+            ejecucion_original_id=ejecucion_original_id,
             iniciado_en=tz_now(),
         )
 
@@ -48,4 +54,10 @@ class EjecucionTareaRepository(RepositoryABC[EjecucionTareaProgramada]):
             estado=EstadoEjecucion.FALLIDO.value,
             finalizado_en=tz_now(),
             mensaje_error=mensaje_error,
+        )
+
+    def marcar_pendiente_reintento(self, id: int) -> None:
+        EjecucionTareaProgramada.objects.filter(pk=id).update(
+            estado=EstadoEjecucion.PENDIENTE_REINTENTO.value,
+            finalizado_en=tz_now(),
         )

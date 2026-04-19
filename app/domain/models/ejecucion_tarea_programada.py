@@ -9,8 +9,16 @@ class EjecucionTareaProgramada(BaseModelABC):
         on_delete=models.PROTECT,
         related_name="ejecuciones",
     )
+    ejecucion_original = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reintentos",
+    )
     disparado_por = models.CharField(max_length=20)
     estado = models.CharField(max_length=20, default="pendiente")
+    numero_intento = models.PositiveSmallIntegerField(default=1)
     iniciado_en = models.DateTimeField()
     finalizado_en = models.DateTimeField(blank=True, null=True)
     mensaje_error = models.TextField(blank=True, null=True)

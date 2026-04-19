@@ -11,8 +11,10 @@ class EstadoEjecucion(str, Enum):
     EJECUTANDO = "ejecutando"
     EXITOSO = "exitoso"
     FALLIDO = "fallido"
+    PENDIENTE_REINTENTO = "pendiente_reintento"
 
 
 class DisparadoPor(str, Enum):
     SCHEDULER = "scheduler"
     MANUAL = "manual"
+    REINTENTO = "reintento"
