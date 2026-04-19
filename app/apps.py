@@ -1,3 +1,5 @@
+import os
+
 from django.apps import AppConfig as DjangoAppConfig
 
 
@@ -13,3 +15,8 @@ class AppConfig(DjangoAppConfig):
         setup_logging()
         logger.info("startup", env=settings.app_env)
         load_initial_models()
+
+        # RUN_MAIN evita arrancar el scheduler dos veces con el auto-reloader de Django
+        if os.environ.get("RUN_MAIN") == "true" or not settings.app_debug:
+            from app.infrastructure.jobs.job_scheduler import job_scheduler
+            job_scheduler.start()

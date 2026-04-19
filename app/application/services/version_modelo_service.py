@@ -1,13 +1,11 @@
-from app.domain.abstractions.repository_abc import RepositoryABC
 from app.domain.ml.pipeline_context import TrainingContext
-from app.domain.models.version_modelo import VersionModelo
 from app.infrastructure.db.repositories.version_modelo_repository import (
     VersionModeloRepository,
 )
 
 
 class VersionModeloService:
-    def __init__(self, repo: RepositoryABC[VersionModelo]) -> None:
+    def __init__(self, repo: VersionModeloRepository) -> None:
         self._repo = repo
 
     def save_new_version(
@@ -31,5 +29,7 @@ class VersionModeloService:
             activo=True,
         )
 
+    def get_version_activa(self, model_name: str):
+        return self._repo.get_activo(model_name)
 
 version_modelo_service = VersionModeloService(repo=VersionModeloRepository())

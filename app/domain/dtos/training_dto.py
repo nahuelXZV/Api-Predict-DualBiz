@@ -6,8 +6,8 @@ from typing import Any
 class TrainRequestDTO:
     model_name: str = "pedido_sugerido"
     version: str = "1.0"
-    hyperparams: dict[str, Any] = field(default_factory=dict)
-    data_source_config: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    tarea_programada_id: int | None = None
 
 
 @dataclass

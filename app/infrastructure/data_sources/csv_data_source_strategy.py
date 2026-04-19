@@ -37,7 +37,7 @@ class CsvDataSourceStrategy(DataSourceABC):
 
 @register_datasource("csv")
 def _build(params: dict) -> CsvDataSourceStrategy:
-    path = params.get("path") or ""
+    path = params.get("data_source_path") or ""
     if not path:
         raise ValueError("El datasource 'csv' requiere el parámetro 'path'.")
     return CsvDataSourceStrategy(

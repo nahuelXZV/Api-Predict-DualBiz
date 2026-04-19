@@ -4,8 +4,8 @@ from app.infrastructure.data_sources.data_source_registry import _BUILDERS
 
 class DataSourceFactory:
     @staticmethod
-    def build(config: dict) -> DataSourceABC:
-        source_type = config.get("type")
+    def build(parameters: dict) -> DataSourceABC:
+        source_type = parameters.get("data_source_type")
         if not isinstance(source_type, str) or not source_type:
             available = list(_BUILDERS.keys())
             raise ValueError(
@@ -18,4 +18,4 @@ class DataSourceFactory:
             raise ValueError(
                 f"Tipo de datasource desconocido: '{source_type}'. Opciones: {available}"
             )
-        return builder(config.get("params") or {})
+        return builder(parameters or {})

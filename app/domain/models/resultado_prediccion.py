@@ -1,10 +1,9 @@
 from django.db import models
-
+from app.domain.abstractions.base_model_abc import BaseModelABC
 from .lote_prediccion import LotePrediccion
 
 
-class ResultadoPrediccion(models.Model):
-    id = models.AutoField(primary_key=True)
+class ResultadoPrediccion(BaseModelABC):
     lote_prediccion = models.ForeignKey(
         LotePrediccion,
         on_delete=models.CASCADE,
@@ -17,5 +16,5 @@ class ResultadoPrediccion(models.Model):
     score = models.FloatField()
     posicion = models.PositiveSmallIntegerField()
 
-    class Meta:
-        db_table = '[ml].[resultado_prediccion]'
+    class Meta(BaseModelABC.Meta):
+        db_table = "[ml].[resultado_prediccion]"

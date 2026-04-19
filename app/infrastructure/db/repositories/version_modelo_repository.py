@@ -23,14 +23,16 @@ class VersionModeloRepository(RepositoryABC[VersionModelo]):
             entrenado_en=entity.entrenado_en,
             ruta_pkl=entity.ruta_pkl,
             tipo_fuente_datos=entity.tipo_fuente_datos,
-            cantidad_clientes=entity.cantidad_clientes,
-            cantidad_productos=entity.cantidad_productos,
-            hiperparametros=entity.hiperparametros,
             activo=entity.activo,
         )
 
     def delete(self, id: int) -> None:
         VersionModelo.objects.filter(pk=id).delete()
+
+    def get_activo(self, nombre_modelo: str) -> VersionModelo | None:
+        return VersionModelo.objects.filter(
+            nombre_modelo=nombre_modelo, activo=True
+        ).first()
 
     def deactivate_all(self, model_name: str) -> None:
         VersionModelo.objects.filter(nombre_modelo=model_name).update(activo=False)

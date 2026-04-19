@@ -1,10 +1,9 @@
 from django.db import models
-
+from app.domain.abstractions.base_model_abc import BaseModelABC
 from .ejecucion_tarea_programada import EjecucionTareaProgramada
 
 
-class LogTareaProgramada(models.Model):
-    id = models.AutoField(primary_key=True)
+class LogTareaProgramada(BaseModelABC):
     ejecucion_tarea_programada = models.ForeignKey(
         EjecucionTareaProgramada,
         on_delete=models.CASCADE,
@@ -17,5 +16,5 @@ class LogTareaProgramada(models.Model):
     mensaje_error = models.TextField(blank=True, null=True)
     ejecutado_en = models.DateTimeField()
 
-    class Meta:
-        db_table = '[ml].[log_tarea_programada]'
+    class Meta(BaseModelABC.Meta):
+        db_table = "[ml].[log_tarea_programada]"

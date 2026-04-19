@@ -1,9 +1,9 @@
 from django.db import models
-
+from app.domain.abstractions.base_model_abc import BaseModelABC
 from .version_modelo import VersionModelo
 
 
-class MetricaModelo(models.Model):
+class MetricaModelo(BaseModelABC):
     version_modelo = models.ForeignKey(
         VersionModelo,
         on_delete=models.CASCADE,
@@ -14,5 +14,5 @@ class MetricaModelo(models.Model):
     split = models.CharField(max_length=20, blank=True, null=True)
     calculado_en = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = '[ml].[metrica_modelo]'
+    class Meta(BaseModelABC.Meta):
+        db_table = "[ml].[metrica_modelo]"

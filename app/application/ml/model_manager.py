@@ -33,12 +33,13 @@ class ModelManager:
         )
         try:
             PipelineClass = get_training_pipeline(request.model_name)
-            data_source = self._factory.build(request.data_source_config)
+            data_source = self._factory.build(request.parameters)
 
             ctx = TrainingContext(
                 model_name=request.model_name,
                 version=request.version,
-                hyperparams=request.hyperparams,
+                parameters=request.parameters,
+                tarea_programada_id=request.tarea_programada_id,
             )
 
             pipeline = PipelineClass()
@@ -49,7 +50,7 @@ class ModelManager:
                 path_model = result.extra.get("path_model")
                 if path_model:
                     self._version_service.save_new_version(
-                        result, str(path_model), request.hyperparams
+                        result, str(path_model), request.parameters
                     )
 
             return TrainResponseDTO(

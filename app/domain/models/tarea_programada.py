@@ -1,16 +1,26 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from django.db import models
+from app.domain.abstractions.base_model_abc import BaseModelABC
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from app.domain.models.tarea_parametro import TareaParametro
 
 
-class TareaProgramada(models.Model):
-    id = models.AutoField(primary_key=True)
+class TareaProgramada(BaseModelABC):
+    parametros: QuerySet[TareaParametro]
     nombre = models.CharField(max_length=100, unique=True)
-    nombre_modelo = models.CharField(max_length=100)
     tipo_job = models.CharField(max_length=30)
     cron_schedule = models.CharField(max_length=50, blank=True, null=True)
     activo = models.BooleanField(default=True)
-    configuracion = models.JSONField(default=dict)
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        db_table = '[ml].[tarea_programada]'
+    def get_params(self) -> dict:
+        return {p.clave: p.valor for p in self.parametros.all()}
+
+    class Meta(BaseModelABC.Meta):
+        db_table = "[ml].[tarea_programada]"
