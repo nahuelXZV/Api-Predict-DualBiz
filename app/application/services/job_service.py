@@ -24,6 +24,8 @@ class JobService:
         self,
         tarea_id: int,
         disparado_por: DisparadoPor = DisparadoPor.SCHEDULER,
+        numero_intento: int = 1,
+        ejecucion_original_id: int | None = None,
     ) -> None:
         tarea = self._tarea_repo.get_by_id(tarea_id)
         if tarea is None:
@@ -34,9 +36,15 @@ class JobService:
             tarea=tarea.nombre,
             tipo=tarea.tipo_job,
             disparado_por=disparado_por.value,
+            intento=numero_intento,
         )
 
-        ejecucion = self._ejecucion_repo.create_inicio(tarea_id, disparado_por.value)
+        ejecucion = self._ejecucion_repo.create_inicio(
+            tarea_id,
+            disparado_por.value,
+            numero_intento=numero_intento,
+            ejecucion_original_id=ejecucion_original_id,
+        )
 
         try:
             self._runner.run(TipoJob(tarea.tipo_job), tarea, ejecucion.id)
@@ -48,6 +56,7 @@ class JobService:
                 "job_fallido",
                 tarea=tarea.nombre,
                 ejecucion_id=ejecucion.id,
+                intento=numero_intento,
                 error=str(e),
             )
             raise
