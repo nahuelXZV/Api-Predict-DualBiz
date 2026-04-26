@@ -1,6 +1,5 @@
 from app.domain.utils.enums import TipoJob
 from app.application.jobs.job_registry import register_job
-from app.application.ml.model_manager import model_manager
 from app.domain.models.tarea_programada import TareaProgramada
 
 

@@ -32,7 +32,10 @@ class ModelManager:
             "manager_train_start", model=request.model_name, version=request.version
         )
         try:
+            logger.info("manager_train_get_pipeline", model=request.model_name)
             PipelineClass = get_training_pipeline(request.model_name)
+
+            logger.info("manager_train_build_datasource", model=request.model_name)
             data_source = self._factory.build(request.parameters)
 
             ctx = TrainingContext(
@@ -42,9 +45,12 @@ class ModelManager:
                 tarea_programada_id=request.tarea_programada_id,
                 ejecucion_id=request.ejecucion_id,
             )
-
             pipeline = PipelineClass()
+
+            logger.info("manager_train_pipeline_set_datasource", model=request.model_name)
             pipeline.set_datasource(data_source)
+            
+            logger.info("manager_train_pipeline_run", model=request.model_name)
             result = pipeline.run(ctx)
 
             if not result.has_errors:

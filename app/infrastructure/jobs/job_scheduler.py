@@ -13,15 +13,13 @@ from app.infrastructure.db.repositories.tarea_programada_repository import (
     TareaProgramadaRepository,
 )
 
-REINTENTO_DELAY_SEGUNDOS = 300
-
 
 class JobScheduler:
     def __init__(
         self, service: JobService, tarea_repo: TareaProgramadaRepository
     ) -> None:
         self._scheduler = BackgroundScheduler(timezone=settings.timezone)
-        self._service = service
+        self._job_service = service
         self._tarea_repo = tarea_repo
 
     def start(self) -> None:
@@ -58,7 +56,7 @@ class JobScheduler:
             logger.info("job_eliminado", tarea_id=tarea_id)
 
     def ejecutar_ahora(self, tarea_id: int) -> None:
-        self._service.ejecutar(tarea_id, disparado_por=DisparadoPor.MANUAL)
+        self._job_service.ejecutar(tarea_id, disparado_por=DisparadoPor.MANUAL)
 
     def listar(self) -> list[dict]:
         return [
@@ -104,7 +102,7 @@ class JobScheduler:
         )
 
         try:
-            self._service.ejecutar(
+            self._job_service.ejecutar(
                 tarea_id,
                 disparado_por=disparado_por,
                 numero_intento=numero_intento,
@@ -113,7 +111,9 @@ class JobScheduler:
         except Exception:
             if numero_intento < tarea.max_reintentos + 1:
                 proximo_intento = numero_intento + 1
-                run_at = tz_now() + datetime.timedelta(seconds=REINTENTO_DELAY_SEGUNDOS)
+                run_at = tz_now() + datetime.timedelta(
+                    seconds=tarea.delay_reintento_segundos
+                )
                 job_id = f"reintento_{tarea_id}_{proximo_intento}"
 
                 # ejecucion_original_id apunta siempre al primer intento

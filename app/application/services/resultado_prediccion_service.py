@@ -18,6 +18,7 @@ class ResultadoPrediccionService:
                 cantidad_sugerida=r["cantidad_sugerida"],
                 score=r["score"],
                 posicion=r["posicion"],
+                complementos=r.get("complementos", ""),
             )
             for r in resultados
         ]

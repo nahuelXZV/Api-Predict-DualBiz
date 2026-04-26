@@ -17,6 +17,7 @@ class TareaProgramada(BaseModelABC):
     cron_schedule = models.CharField(max_length=50, blank=True, null=True)
     activo = models.BooleanField(default=True)
     max_reintentos = models.PositiveSmallIntegerField(default=0)
+    delay_reintento_segundos = models.PositiveIntegerField(default=300)
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

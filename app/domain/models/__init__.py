@@ -7,6 +7,7 @@ from app.domain.models.version_modelo import VersionModelo
 from app.domain.models.metrica_modelo import MetricaModelo
 from app.domain.models.lote_prediccion import LotePrediccion
 from app.domain.models.resultado_prediccion import ResultadoPrediccion
+from app.domain.models.clientes import Clientes
 
 __all__ = [
     "BaseModelABC",
@@ -18,4 +19,5 @@ __all__ = [
     "MetricaModelo",
     "LotePrediccion",
     "ResultadoPrediccion",
+    "Clientes",
 ]

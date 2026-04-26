@@ -10,11 +10,11 @@ CAT_FEATURES = [
     "sucursal",
 ]
 PRODUCTOS_DESTACADOS = [
-    {"nombre_producto": "PRODUCTO EJEMPLO A", "razon": "oferta", "fuente": "destacado"},
+    {"producto_id": "PRODUCTO EJEMPLO A", "complementos": "oferta", "fuente": "destacado"},
     {
-        "nombre_producto": "PRODUCTO EJEMPLO B",
-        "razon": "liquidacion",
+        "producto_id": "PRODUCTO EJEMPLO B",
+        "complementos": "liquidacion",
         "fuente": "destacado",
     },
-    {"nombre_producto": "PRODUCTO EJEMPLO C", "razon": "nuevo", "fuente": "destacado"},
+    {"producto_id": "PRODUCTO EJEMPLO C", "complementos": "nuevo", "fuente": "destacado"},
 ]

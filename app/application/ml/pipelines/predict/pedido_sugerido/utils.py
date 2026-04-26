@@ -143,3 +143,22 @@ def build_features_candidatos(req: BuildFeaturesRequest) -> pd.DataFrame:
         )
 
     return pd.DataFrame(filas)
+
+
+def armar_respuesta(data: list[dict], fuente: str, cliente_id: str) -> list[dict]:
+    data_response = []
+
+    for idx, item in enumerate(data, start=1):
+        data_response.append(
+            {
+                "cliente_id": cliente_id,
+                "producto_id": item.get("producto_id"),
+                "fuente": fuente,
+                "cantidad_sugerida": item.get("cantidad_sugerida", 0),
+                "score": item.get("score", 0),
+                "posicion": idx,
+                "complementos": item.get("complementos", ""),
+            }
+        )
+
+    return data_response

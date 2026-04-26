@@ -7,4 +7,5 @@ from app.domain.models import (
     MetricaModelo,
     LotePrediccion,
     ResultadoPrediccion,
+    Clientes,
 )

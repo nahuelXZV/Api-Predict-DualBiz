@@ -13,3 +13,6 @@ class PredictService:
         return PredictResponseDTO(
             model_name=model_name, predictions=response, success=True
         )
+
+
+predict_service = PredictService()

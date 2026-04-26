@@ -15,6 +15,7 @@ class ResultadoPrediccion(BaseModelABC):
     cantidad_sugerida = models.FloatField()
     score = models.FloatField()
     posicion = models.PositiveSmallIntegerField()
+    complementos = models.CharField(max_length=500, blank=True, null=True)
 
     class Meta(BaseModelABC.Meta):
         db_table = "[ml].[resultado_prediccion]"

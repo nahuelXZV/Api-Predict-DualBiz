@@ -4,7 +4,7 @@ from app.domain.models.version_modelo import VersionModelo
 
 
 class LotePrediccion(BaseModelABC):
-    nombre_modelo = models.CharField(max_length=100, unique=True)
+    nombre_modelo = models.CharField(max_length=100)
     version_modelo = models.ForeignKey(
         VersionModelo,
         on_delete=models.PROTECT,

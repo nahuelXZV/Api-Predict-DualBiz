@@ -4,6 +4,7 @@ from enum import Enum
 class TipoJob(str, Enum):
     TRAINING = "training"
     PREDICT = "predict"
+    TRAINING_PREDICT = "training_predict"
 
 
 class EstadoEjecucion(str, Enum):

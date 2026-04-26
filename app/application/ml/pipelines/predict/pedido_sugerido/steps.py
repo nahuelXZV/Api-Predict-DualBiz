@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+from app.application.utils.parser import parse_bool
 from app.domain.core.logging import logger
 from app.domain.ml.pipeline_context import PredictContext
 from app.domain.abstractions.step_abc import StepABC
@@ -15,6 +16,7 @@ from app.application.ml.pipelines.predict.pedido_sugerido.constants import (
 from app.application.ml.pipelines.predict.pedido_sugerido.utils import (
     apply_pareto,
     build_features_candidatos,
+    armar_respuesta,
 )
 
 
@@ -271,10 +273,10 @@ class ParetoFilterStep(StepABC[PredictContext]):
     """
 
     def execute(self, ctx: PredictContext) -> PredictContext:
-        top_n = ctx.parameters.get("top_n", TOP_N)
-        cantidad_minima = ctx.parameters.get("cantidad_minima", CANTIDAD_MINIMA)
-        porcentaje_raw = ctx.parameters.get(
-            "porcentaje_pareto", PORCENTAJE_PARETO * 100
+        top_n = int(ctx.parameters.get("top_n", TOP_N))
+        cantidad_minima = int(ctx.parameters.get("cantidad_minima", CANTIDAD_MINIMA))
+        porcentaje_raw = int(
+            ctx.parameters.get("porcentaje_pareto", PORCENTAJE_PARETO * 100)
         )
         porcentaje_raw = max(1, min(100, int(porcentaje_raw)))
         pareto_threshold = porcentaje_raw / 100
@@ -464,33 +466,46 @@ class BuildResponseStep(StepABC[PredictContext]):
 
     def execute(self, ctx: PredictContext) -> PredictContext:
         knn = ctx.extra["recomendaciones_knn_xgb"]
-        if ctx.parameters.get("recomendacion_apriori", False):
+        recomendacion_apriori = parse_bool(
+            ctx.parameters.get("recomendacion_apriori"), False
+        )
+        recomendacion_destacados = parse_bool(
+            ctx.parameters.get("recomendacion_destacados"), False
+        )
+
+        if recomendacion_apriori:
             apriori = ctx.extra["recomendaciones_apriori_xgb"]
         else:
             apriori = pd.DataFrame(
                 columns=[
                     "producto_id",
                     "nombre_producto",
-                    "antecedente",
+                    "complementos",
                     "cantidad_sugerida",
                     "score",
                     "fuente",
                 ]
             )
 
-        if ctx.parameters.get("recomendacion_destacados", False):
+        if recomendacion_destacados:
             destacados = ctx.extra["recomendaciones_destacados"]
         else:
             destacados = []
 
-        ctx.data_response = {
-            "knn_xgb": knn.to_dict(orient="records"),
-            "apriori_xgb": apriori.to_dict(orient="records"),
-            "destacados": destacados,
-        }
+        cliente_id: str = ctx.parameters.get("cliente_id") or "desconocido"
+        knn_xgb = knn.to_dict(orient="records")
+        apriori_xgb = apriori.to_dict(orient="records")
+
+        ctx.data_response = []
+        ctx.data_response.extend(armar_respuesta(knn_xgb, "knn_xgb", cliente_id))
+        ctx.data_response.extend(
+            armar_respuesta(apriori_xgb, "apriori_xgb", cliente_id)
+        )
+        ctx.data_response.extend(armar_respuesta(destacados, "destacados", cliente_id))
+
         logger.info(
             "respuesta_ensamblada",
-            cliente_id=ctx.parameters.get("cliente_id"),
+            cliente_id=cliente_id,
             n_knn=len(knn),
             n_apriori=len(apriori),
             n_destacados=len(destacados),
