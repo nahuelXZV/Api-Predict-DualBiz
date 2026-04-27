@@ -1,3 +1,4 @@
+from app.application.utils.parser import parse_bool, parse_int
 from app.domain.core.logging import logger
 from app.application.services.resultado_prediccion_service import (
     resultado_prediccion_service,
@@ -56,19 +57,23 @@ def handle(tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
             raise RuntimeError("No existen clientes para generar predicciones")
 
         base_parameters = {
-            "cantidad_minima": params.get("cantidad_minima", 1.0),
-            "top_n": params.get("top_n", 50),
-            "solo_nuevos": params.get("solo_nuevos", False),
-            "porcentaje_pareto": params.get("porcentaje_pareto", 20),
-            "recomendacion_apriori": params.get("recomendacion_apriori", False),
-            "recomendacion_destacados": params.get("recomendacion_destacados", False),
+            "cantidad_minima": parse_int(params.get("cantidad_minima"), 1),
+            "top_n": parse_int(params.get("top_n"), 50),
+            "porcentaje_pareto": parse_int(params.get("porcentaje_pareto"), 20),
+            "solo_nuevos": parse_bool(params.get("solo_nuevos"), False),
+            "recomendacion_apriori": parse_bool(
+                params.get("recomendacion_apriori"), False
+            ),
+            "recomendacion_destacados": parse_bool(
+                params.get("recomendacion_destacados"), False
+            ),
         }
 
         for cliente in clientes:
             try:
                 parameters = {
                     **base_parameters,
-                    "cliente_id": cliente.codigo_erp,
+                    "cliente_id": parse_int(cliente.codigo_erp),
                 }
 
                 pred_result: PredictResponseDTO = predict_service.predict(
