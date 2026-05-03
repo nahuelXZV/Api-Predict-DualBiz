@@ -5,31 +5,32 @@ from app.domain.models import LogTareaProgramada
 
 class LogTareaRepository(RepositoryABC[LogTareaProgramada]):
     def get_by_id(self, id: int) -> LogTareaProgramada | None:
-        return LogTareaProgramada.objects.filter(pk=id).first()
+        return LogTareaProgramada.objects.filter(pk=id, eliminado=False).first()
 
     def exists(self, id: int) -> bool:
-        return LogTareaProgramada.objects.filter(pk=id).exists()
+        return LogTareaProgramada.objects.filter(pk=id, eliminado=False).exists()
 
     def list_all(self) -> list[LogTareaProgramada]:
-        return list(LogTareaProgramada.objects.all())
+        return list(LogTareaProgramada.objects.filter(eliminado=False))
 
     def save(self, entity: LogTareaProgramada) -> None:
         entity.save()
 
     def update(self, id: int, entity: LogTareaProgramada) -> None:
-        LogTareaProgramada.objects.filter(pk=id).update(
+        LogTareaProgramada.objects.filter(pk=id, eliminado=False).update(
             estado=entity.estado,
             duracion_segundos=entity.duracion_segundos,
             mensaje_error=entity.mensaje_error,
         )
 
     def delete(self, id: int) -> None:
-        LogTareaProgramada.objects.filter(pk=id).delete()
+        LogTareaProgramada.objects.filter(pk=id, eliminado=False).update(eliminado=True)
 
     def list_by_ejecucion(self, ejecucion_id: int) -> list[LogTareaProgramada]:
         return list(
             LogTareaProgramada.objects.filter(
-                ejecucion_tarea_programada_id=ejecucion_id
+                ejecucion_tarea_programada_id=ejecucion_id,
+                eliminado=False,
             ).order_by("orden_step")
         )
 
@@ -50,4 +51,5 @@ class LogTareaRepository(RepositoryABC[LogTareaProgramada]):
             duracion_segundos=duracion_segundos,
             mensaje_error=mensaje_error,
             ejecutado_en=tz_now(),
+            eliminado=False,
         )

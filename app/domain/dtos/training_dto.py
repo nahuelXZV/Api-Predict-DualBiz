@@ -1,13 +1,13 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.domain.models.tarea_programada import TareaProgramada
+
 
 @dataclass
 class TrainRequestDTO:
-    model_name: str = "pedido_sugerido"
-    version: str = "1.0"
+    tarea_programada: TareaProgramada | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
-    tarea_programada_id: int | None = None
     ejecucion_id: int | None = None
 
 

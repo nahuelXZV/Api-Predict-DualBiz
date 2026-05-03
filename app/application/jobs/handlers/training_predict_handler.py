@@ -8,7 +8,6 @@ from app.application.services.version_modelo_service import version_modelo_servi
 from app.application.services.clientes_service import cliente_service
 from app.application.services.predict_service import predict_service
 
-from app.domain.core.config import tz_now
 from app.domain.dtos.predict_dto import PredictResponseDTO
 from app.domain.utils.enums import TipoJob
 from app.domain.dtos.training_dto import TrainRequestDTO
@@ -19,37 +18,32 @@ from app.domain.models.tarea_programada import TareaProgramada
 
 @register_job(TipoJob.TRAINING_PREDICT)
 def handle(tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
-    params = tarea_programada.get_params()
 
-    model_name = params.get("model_name")
-    if not model_name:
-        raise ValueError("Falta el parámetro obligatorio: model_name")
-
+    # ENTRENAMIENTO
     request = TrainRequestDTO(
-        model_name=model_name,
-        version=tz_now().strftime("%Y.%m.%d"),
-        parameters=params,
-        tarea_programada_id=tarea_programada.id,
+        tarea_programada=tarea_programada,
         ejecucion_id=ejecucion_id,
     )
-
     result = model_manager.train(request)
 
     if not result.success:
-        raise RuntimeError(f"Entrenamiento fallido: {result.errors}")
+        raise Exception(f"Error en entrenamiento: {result.errors}")
 
-    modelo_activo = version_modelo_service.get_version_activa(request.model_name)
+    parameters = tarea_programada.get_params()
+    nombre_modelo = parameters["model_name"]
+    modelo_activo = version_modelo_service.get_version_activa(nombre_modelo)
 
     if modelo_activo is None:
-        raise RuntimeError(f"No se encontró modelo activo para {request.model_name}")
+        raise RuntimeError(f"No se encontró modelo activo para {nombre_modelo}")
 
     lote_id = None
     cantidad_predicciones = 0
 
+    # PREDICCIÓN
     try:
         lote_id = lote_prediccion_service.iniciar_lote(
-            nombre_modelo=request.model_name,
-            parametros=request.parameters,
+            nombre_modelo=nombre_modelo,
+            parametros=parameters,
         )
 
         clientes = cliente_service.listar_clientes()
@@ -57,15 +51,15 @@ def handle(tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
             raise RuntimeError("No existen clientes para generar predicciones")
 
         base_parameters = {
-            "cantidad_minima": parse_int(params.get("cantidad_minima"), 1),
-            "top_n": parse_int(params.get("top_n"), 50),
-            "porcentaje_pareto": parse_int(params.get("porcentaje_pareto"), 20),
-            "solo_nuevos": parse_bool(params.get("solo_nuevos"), False),
+            "cantidad_minima": parse_int(parameters.get("cantidad_minima"), 1),
+            "top_n": parse_int(parameters.get("top_n"), 50),
+            "porcentaje_pareto": parse_int(parameters.get("porcentaje_pareto"), 20),
+            "solo_nuevos": parse_bool(parameters.get("solo_nuevos"), False),
             "recomendacion_apriori": parse_bool(
-                params.get("recomendacion_apriori"), False
+                parameters.get("recomendacion_apriori"), False
             ),
             "recomendacion_destacados": parse_bool(
-                params.get("recomendacion_destacados"), False
+                parameters.get("recomendacion_destacados"), False
             ),
         }
 

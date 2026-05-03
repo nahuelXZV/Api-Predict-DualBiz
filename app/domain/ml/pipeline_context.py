@@ -3,6 +3,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.domain.models.tarea_programada import TareaProgramada
+
 
 @dataclass
 class BaseContext:
@@ -14,7 +16,7 @@ class BaseContext:
     steps_executed: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
-    tarea_programada_id: int | None = None
+    tarea_programada: TareaProgramada | None = None
     ejecucion_id: int | None = None
 
     @property

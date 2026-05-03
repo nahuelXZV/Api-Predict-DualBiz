@@ -15,11 +15,16 @@ class VersionModeloService:
         self, ctx: TrainingContext, path_model: str, parameters: dict
     ) -> None:
         self._repo.deactivate_all(ctx.model_name)
+        fuente_datos_id = (
+            getattr(ctx.tarea_programada, "fuente_datos_id", None)
+            if ctx.tarea_programada
+            else None
+        )
         self._repo.create(
             nombre_modelo=ctx.model_name,
             version=ctx.version,
             ruta_pkl=path_model,
-            tipo_fuente_datos="historial_ventas",
+            fuente_datos_id=fuente_datos_id,
             parametros=parameters,
             ejecucion_tarea_programada_id=ctx.ejecucion_id,
             activo=True,

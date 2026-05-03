@@ -3,8 +3,5 @@ from app.application.ml.model_manager import model_manager
 
 
 class ModelManagerService:
-
     def list_models(self) -> list[ModelMetadata]:
         return model_manager.list_models()
-        
-    
