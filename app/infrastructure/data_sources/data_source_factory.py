@@ -4,8 +4,7 @@ from app.infrastructure.data_sources.data_source_registry import _BUILDERS
 
 class DataSourceFactory:
     @staticmethod
-    def build(parameters: dict) -> DataSourceABC:
-        source_type = parameters.get("data_source_type")
+    def build(source_type: str, parameters: dict) -> DataSourceABC:
         if not isinstance(source_type, str) or not source_type:
             available = list(_BUILDERS.keys())
             raise ValueError(

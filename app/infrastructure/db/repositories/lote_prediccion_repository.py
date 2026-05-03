@@ -5,39 +5,43 @@ from app.domain.models import LotePrediccion
 
 class LotePrediccionRepository(RepositoryABC[LotePrediccion]):
     def get_by_id(self, id: int) -> LotePrediccion | None:
-        return LotePrediccion.objects.filter(pk=id).first()
+        return LotePrediccion.objects.filter(pk=id, eliminado=False).first()
 
     def exists(self, id: int) -> bool:
-        return LotePrediccion.objects.filter(pk=id).exists()
+        return LotePrediccion.objects.filter(pk=id, eliminado=False).exists()
 
     def list_all(self) -> list[LotePrediccion]:
-        return list(LotePrediccion.objects.all())
+        return list(LotePrediccion.objects.filter(eliminado=False))
 
     def save(self, entity: LotePrediccion) -> None:
         entity.save()
 
     def update(self, id: int, entity: LotePrediccion) -> None:
-        LotePrediccion.objects.filter(pk=id).update(
+        LotePrediccion.objects.filter(pk=id, eliminado=False).update(
             estado=entity.estado,
             cantidad_predicciones=entity.cantidad_predicciones,
             parametros=entity.parametros,
         )
 
     def delete(self, id: int) -> None:
-        LotePrediccion.objects.filter(pk=id).delete()
+        LotePrediccion.objects.filter(pk=id, eliminado=False).update(eliminado=True)
 
     def get_by_modelo(self, nombre_modelo: str) -> LotePrediccion | None:
-        return LotePrediccion.objects.filter(nombre_modelo=nombre_modelo).first()
+        return LotePrediccion.objects.filter(
+            nombre_modelo=nombre_modelo,
+            eliminado=False,
+        ).first()
 
     def create(self, **kwargs) -> LotePrediccion:
         kwargs.setdefault("generado_en", tz_now())
+        kwargs.setdefault("eliminado", False)
         return LotePrediccion.objects.create(**kwargs)
 
     def marcar_completado(self, id: int, cantidad_predicciones: int) -> None:
-        LotePrediccion.objects.filter(pk=id).update(
+        LotePrediccion.objects.filter(pk=id, eliminado=False).update(
             estado="completado",
             cantidad_predicciones=cantidad_predicciones,
         )
 
     def marcar_fallido(self, id: int) -> None:
-        LotePrediccion.objects.filter(pk=id).update(estado="fallido")
+        LotePrediccion.objects.filter(pk=id, eliminado=False).update(estado="fallido")

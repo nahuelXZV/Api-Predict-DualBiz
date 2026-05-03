@@ -4,36 +4,44 @@ from app.domain.models import ResultadoPrediccion
 
 class ResultadoPrediccionRepository(RepositoryABC[ResultadoPrediccion]):
     def get_by_id(self, id: int) -> ResultadoPrediccion | None:
-        return ResultadoPrediccion.objects.filter(pk=id).first()
+        return ResultadoPrediccion.objects.filter(pk=id, eliminado=False).first()
 
     def exists(self, id: int) -> bool:
-        return ResultadoPrediccion.objects.filter(pk=id).exists()
+        return ResultadoPrediccion.objects.filter(pk=id, eliminado=False).exists()
 
     def list_all(self) -> list[ResultadoPrediccion]:
-        return list(ResultadoPrediccion.objects.all())
+        return list(ResultadoPrediccion.objects.filter(eliminado=False))
 
     def save(self, entity: ResultadoPrediccion) -> None:
         entity.save()
 
     def update(self, id: int, entity: ResultadoPrediccion) -> None:
-        ResultadoPrediccion.objects.filter(pk=id).update(
+        ResultadoPrediccion.objects.filter(pk=id, eliminado=False).update(
             cantidad_sugerida=entity.cantidad_sugerida,
             score=entity.score,
             posicion=entity.posicion,
         )
 
     def delete(self, id: int) -> None:
-        ResultadoPrediccion.objects.filter(pk=id).delete()
+        ResultadoPrediccion.objects.filter(pk=id, eliminado=False).update(
+            eliminado=True
+        )
 
     def list_by_lote(self, lote_id: int) -> list[ResultadoPrediccion]:
         return list(
-            ResultadoPrediccion.objects.filter(lote_prediccion_id=lote_id).order_by(
-                "posicion"
-            )
+            ResultadoPrediccion.objects.filter(
+                lote_prediccion_id=lote_id,
+                eliminado=False,
+            ).order_by("posicion")
         )
 
     def delete_by_lote(self, lote_id: int) -> None:
-        ResultadoPrediccion.objects.filter(lote_prediccion_id=lote_id).delete()
+        ResultadoPrediccion.objects.filter(
+            lote_prediccion_id=lote_id,
+            eliminado=False,
+        ).update(eliminado=True)
 
     def bulk_create(self, resultados: list[ResultadoPrediccion]) -> None:
+        for resultado in resultados:
+            resultado.eliminado = False
         ResultadoPrediccion.objects.bulk_create(resultados)

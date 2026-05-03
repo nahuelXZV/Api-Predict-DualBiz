@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from django.db import models
 from app.domain.models.base_model_abc import BaseModelABC
+from app.domain.models.fuente_datos import FuenteDatos
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -18,8 +19,14 @@ class TareaProgramada(BaseModelABC):
     activo = models.BooleanField(default=True)
     max_reintentos = models.PositiveSmallIntegerField(default=0)
     delay_reintento_segundos = models.PositiveIntegerField(default=300)
-    creado_en = models.DateTimeField(auto_now_add=True)
-    actualizado_en = models.DateTimeField(auto_now=True)
+
+    fuente_datos = models.ForeignKey(
+        FuenteDatos,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="fuente_datos_tarea",
+    )
 
     def get_params(self) -> dict:
         return {p.clave: p.valor for p in self.parametros.all()}

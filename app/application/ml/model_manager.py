@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import app.application.ml.pipelines.training  # noqa: F401 — activa el auto-registro de pipelines
 
+from app.application.utils.modelo_utils import ObtenerVersion
+from app.domain.abstractions.data_source_abc import DataSourceABC
 from app.domain.core.exceptions import ModelNotFoundError
 from app.domain.core.logging import logger
 from app.domain.dtos.training_dto import TrainRequestDTO, TrainResponseDTO
@@ -14,6 +16,7 @@ from app.application.services.version_modelo_service import (
     VersionModeloService,
     version_modelo_service,
 )
+from app.application.services.fuente_datos_service import fuente_datos_service
 
 
 class ModelManager:
@@ -28,36 +31,51 @@ class ModelManager:
         self._version_service = version_service
 
     def train(self, request: TrainRequestDTO) -> TrainResponseDTO:
+
+        parameters = (
+            request.tarea_programada.get_params()
+            if request.tarea_programada
+            else request.parameters
+        )
+        version = ObtenerVersion()
         logger.info(
-            "manager_train_start", model=request.model_name, version=request.version
+            "manager_train_start", model=parameters["model_name"], version=version
         )
         try:
-            logger.info("manager_train_get_pipeline", model=request.model_name)
-            PipelineClass = get_training_pipeline(request.model_name)
-
-            logger.info("manager_train_build_datasource", model=request.model_name)
-            data_source = self._factory.build(request.parameters)
-
+            logger.info("manager_train_get_pipeline", model=parameters["model_name"])
+            PipelineClass = get_training_pipeline(parameters["model_name"])
             ctx = TrainingContext(
-                model_name=request.model_name,
-                version=request.version,
-                parameters=request.parameters,
-                tarea_programada_id=request.tarea_programada_id,
+                model_name=parameters["model_name"],
+                version=version,
+                parameters=parameters,
+                tarea_programada=request.tarea_programada,
                 ejecucion_id=request.ejecucion_id,
             )
             pipeline = PipelineClass()
 
-            logger.info("manager_train_pipeline_set_datasource", model=request.model_name)
+            logger.info(
+                "manager_train_pipeline_set_datasource", model=parameters["model_name"]
+            )
+            fuente_id = (
+                getattr(request.tarea_programada, "fuente_datos_id", None)
+                if request.tarea_programada
+                else parameters.get("fuente_datos_id")
+            )
+            if fuente_id is None:
+                raise ValueError(
+                    "No se encontró fuente_datos_id en los parámetros para construir el datasource."
+                )
+            data_source = self.obtener_data_source(fuente_id)
             pipeline.set_datasource(data_source)
-            
-            logger.info("manager_train_pipeline_run", model=request.model_name)
+
+            logger.info("manager_train_pipeline_run", model=parameters["model_name"])
             result = pipeline.run(ctx)
 
             if not result.has_errors:
                 path_model = result.extra.get("path_model")
                 if path_model:
                     self._version_service.save_new_version(
-                        result, str(path_model), request.parameters
+                        result, str(path_model), parameters
                     )
 
             return TrainResponseDTO(
@@ -70,15 +88,15 @@ class ModelManager:
         except Exception as e:
             logger.error(
                 "manager_train_error",
-                model=request.model_name,
-                version=request.version,
+                model=parameters["model_name"],
+                version=version,
                 error=str(e),
             )
             return TrainResponseDTO(
                 success=False,
                 errors=[str(e)],
-                model_name=request.model_name,
-                version=request.version,
+                model_name=parameters["model_name"],
+                version=version,
             )
 
     def predict(self, model_name: str, data: dict) -> dict:
@@ -99,6 +117,17 @@ class ModelManager:
 
     def list_models(self) -> list[ModelMetadata]:
         return self._registry.list_models()
+
+    def obtener_data_source(self, fuente_id: int) -> DataSourceABC:
+        fuente_datos = fuente_datos_service.obtener_fuente_datos(fuente_id)
+        if fuente_datos is None:
+            raise ValueError(
+                f"Fuente de datos con id {fuente_id} no encontrada en el sistema."
+            )
+        parameters_fuente = fuente_datos_service.obtener_parametros_fuente_datos(
+            fuente_id
+        )
+        return self._factory.build(fuente_datos.tipo, parameters_fuente)
 
 
 model_manager = ModelManager(

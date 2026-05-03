@@ -4,8 +4,9 @@ from app.domain.models import (
     EjecucionTareaProgramada,
     LogTareaProgramada,
     VersionModelo,
-    MetricaModelo,
     LotePrediccion,
     ResultadoPrediccion,
     Clientes,
+    FuenteDatos,
+    FuenteDatosParametros,
 )
