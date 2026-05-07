@@ -8,15 +8,21 @@ from app.domain.core.logging import logger
 
 @register_job(TipoJob.CONSULTA_SQL)
 def handle(tarea_programada: TareaProgramada, ejecucion_id: int) -> None:
-    fuente_id = getattr(tarea_programada, "fuente_datos_id", 1)
+    fuente_id = getattr(tarea_programada, "fuente_datos_id", None)
+    if fuente_id is None:
+        raise ValueError(
+            "La tarea programada para consulta SQL debe tener un atributo 'fuente_datos_id'."
+        )
+        
     fuente_datos = fuente_datos_service.obtener_fuente_datos(fuente_id)
     if fuente_datos is None:
         raise ValueError(
             f"Fuente de datos con id {fuente_id} no encontrada en el sistema."
         )
+        
     parameters_fuente = fuente_datos_service.obtener_parametros_fuente_datos(fuente_id)
     datasource = DataSourceFactory.build(fuente_datos.tipo, parameters_fuente)
     data = datasource.load()
-    logger.info(
-        "consulta_sql_job_data_obtenida", data=data
-    )
+    
+    logger.info("consulta_sql_job_data_obtenida")
+    logger.info(data)
