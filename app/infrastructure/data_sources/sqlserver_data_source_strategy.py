@@ -9,24 +9,35 @@ from app.infrastructure.data_sources.data_source_registry import (
 
 
 class SqlServerDataSourceStrategy(DataSourceABC):
-    """
-    Obtiene datos desde SQL Server ejecutando una query cruda con pyodbc.
-    Usa pd.read_sql() directamente sobre la conexion, sin ORM, para
-    maximizar velocidad en volumenes grandes.
-
-    Args:
-        connection_string: Cadena de conexion pyodbc.
-        query: Query SQL a ejecutar.
-    """
-
     def __init__(self, connection_string: str, query: str) -> None:
         self._connection_string = connection_string
         self._query = query
 
     def load(self) -> pd.DataFrame:
-        logger.info("sqlserver_datasource_conectando")
+        batch_size = 5000
+        chunks = []
+
         with pyodbc.connect(self._connection_string) as conn:
-            df = pd.read_sql(self._query, conn)
+            logger.info("sqlserver_datasource_conectando")
+            cursor = conn.cursor()
+            cursor.execute(self._query)
+
+            columns = [col[0] for col in cursor.description]
+
+            while True:
+                rows = cursor.fetchmany(batch_size)
+                if not rows:
+                    break
+
+                chunk_rows = [tuple(row) for row in rows]
+                chunks.append(pd.DataFrame.from_records(chunk_rows, columns=columns))
+
+        df = (
+            pd.concat(chunks, ignore_index=True)
+            if chunks
+            else pd.DataFrame(columns=columns)
+        )
+
         logger.info("sqlserver_datasource_cargado", filas=len(df), columnas=df.shape[1])
         return df
 
@@ -92,4 +103,5 @@ def _build(params: dict) -> SqlServerDataSourceStrategy:
         raise ValueError("El datasource 'sqlserver' requiere el parametro 'query'.")
 
     conn_str = _build_connection_string(params or {})
+    logger.info("sqlserver_datasource_conexion_construida", connection_string=conn_str)
     return SqlServerDataSourceStrategy(conn_str, query)

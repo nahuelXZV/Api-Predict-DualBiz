@@ -5,6 +5,7 @@ class TipoJob(str, Enum):
     TRAINING = "training"
     PREDICT = "predict"
     TRAINING_PREDICT = "training_predict"
+    CONSULTA_SQL = "consulta_sql"
 
 
 class EstadoEjecucion(str, Enum):
