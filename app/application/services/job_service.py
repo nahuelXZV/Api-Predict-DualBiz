@@ -1,11 +1,11 @@
-from app.domain.core.logging import logger
-from app.domain.utils.enums import TipoJob, DisparadoPor
 from app.application.jobs.job_runner import JobRunner, job_runner
-from app.infrastructure.db.repositories.tarea_programada_repository import (
-    TareaProgramadaRepository,
-)
+from app.domain.core.logging import logger
+from app.domain.utils.enums import DisparadoPor, TipoJob
 from app.infrastructure.db.repositories.ejecucion_tarea_repository import (
     EjecucionTareaRepository,
+)
+from app.infrastructure.db.repositories.tarea_programada_repository import (
+    TareaProgramadaRepository,
 )
 
 

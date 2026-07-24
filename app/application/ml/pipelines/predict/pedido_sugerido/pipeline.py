@@ -1,4 +1,3 @@
-from app.domain.abstractions.pipeline_base import PredictionPipelineBase
 from app.application.ml.pipelines.predict.pedido_sugerido.steps import (
     AprioriBuildCandidatesStep,
     AprioriRankAndPredictStep,
@@ -11,6 +10,7 @@ from app.application.ml.pipelines.predict.pedido_sugerido.steps import (
     ParetoFilterStep,
     ValidateClienteStep,
 )
+from app.domain.abstractions.pipeline_base import PredictionPipelineBase
 
 
 class PedidoSugeridoPredictPipeline(PredictionPipelineBase):

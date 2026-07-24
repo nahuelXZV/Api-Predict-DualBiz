@@ -1,9 +1,9 @@
-from app.domain.utils.enums import TipoJob
 from app.application.jobs.job_registry import register_job
-from app.domain.models.tarea_programada import TareaProgramada
 from app.application.services.fuente_datos_service import fuente_datos_service
-from app.infrastructure.data_sources.data_source_factory import DataSourceFactory
 from app.domain.core.logging import logger
+from app.domain.models.tarea_programada import TareaProgramada
+from app.domain.utils.enums import TipoJob
+from app.infrastructure.data_sources.data_source_factory import DataSourceFactory
 from app.infrastructure.data_writers.data_writer_factory import DataWriterFactory
 
 

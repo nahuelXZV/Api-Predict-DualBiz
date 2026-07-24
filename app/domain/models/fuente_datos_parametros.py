@@ -1,4 +1,5 @@
 from django.db import models
+
 from app.domain.models.base_model_abc import BaseModelABC
 from app.domain.models.fuente_datos import FuenteDatos
 

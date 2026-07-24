@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import threading
-from typing import Iterator
+from collections.abc import Iterator
 
+from app.domain.abstractions.ml_model_abc import MLModelABC
 from app.domain.core.exceptions import (
     ModelAlreadyExistsError,
     ModelNotFoundError,
     ModelNotReadyError,
 )
-from app.domain.abstractions.ml_model_abc import MLModelABC
-from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.core.logging import logger
+from app.domain.ml.model_metadata import ModelMetadata
 
 
 class ModelRegistry:

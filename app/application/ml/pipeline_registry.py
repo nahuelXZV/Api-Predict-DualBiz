@@ -1,7 +1,6 @@
-from typing import Callable
+from collections.abc import Callable
 
-from app.domain.abstractions.pipeline_base import PipelineBase
-from app.domain.abstractions.pipeline_base import TrainingPipelineBase
+from app.domain.abstractions.pipeline_base import PipelineBase, TrainingPipelineBase
 
 _PIPELINES: dict[str, type[PipelineBase]] = {}
 

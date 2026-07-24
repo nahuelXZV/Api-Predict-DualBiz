@@ -1,12 +1,12 @@
 import joblib
 
-from app.domain.core.exceptions import ModelNotLoadedError
-from app.domain.ml.pipeline_context import PredictContext
-from app.domain.abstractions.ml_model_abc import MLModelABC
-from app.domain.ml.model_metadata import ModelMetadata
 from app.application.ml.pipelines.predict.pedido_sugerido.pipeline import (
     PedidoSugeridoPredictPipeline,
 )
+from app.domain.abstractions.ml_model_abc import MLModelABC
+from app.domain.core.exceptions import ModelNotLoadedError
+from app.domain.ml.model_metadata import ModelMetadata
+from app.domain.ml.pipeline_context import PredictContext
 
 
 class PedidoSugerido(MLModelABC):

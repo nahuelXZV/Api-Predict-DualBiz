@@ -1,8 +1,8 @@
-from app.domain.utils.enums import TipoJob
-from app.domain.dtos.training_dto import TrainRequestDTO
 from app.application.jobs.job_registry import register_job
 from app.application.ml.model_manager import model_manager
+from app.domain.dtos.training_dto import TrainRequestDTO
 from app.domain.models.tarea_programada import TareaProgramada
+from app.domain.utils.enums import TipoJob
 
 
 @register_job(TipoJob.TRAINING)

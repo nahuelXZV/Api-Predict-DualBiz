@@ -1,5 +1,5 @@
-from app.domain.dtos.training_dto import TrainRequestDTO, TrainResponseDTO
 from app.application.ml.model_manager import model_manager
+from app.domain.dtos.training_dto import TrainRequestDTO, TrainResponseDTO
 
 
 class TrainingService:

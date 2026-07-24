@@ -1,29 +1,19 @@
 import joblib
 import numpy as np
 import pandas as pd
-
-from sklearn.ensemble import RandomForestRegressor
-
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.neighbors import NearestNeighbors
-from sklearn.preprocessing import OrdinalEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
-from app.domain.core.logging import logger
-from app.domain.abstractions.data_source_abc import DataSourceABC
-from app.domain.abstractions.step_abc import StepABC
-from app.domain.ml.pipeline_context import TrainingContext
-from app.domain.ml.model_metadata import ModelMetadata
-from app.domain.ml.model_registry import model_registry
-from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
-from app.domain.ml.training_params import SearchCVConfig
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+
 from app.application.ml.pipelines.training.pedido_sugerido.constants import (
     CAT_FEATURES,
     HISTORIAL_VENTAS_COLS,
+    MODEL_PATH_BASE,
     RF_CANTIDAD_TARGET,
     RF_FEATURES,
-    MODEL_PATH_BASE,
     SAMPLE_FRAC_PARAMS,
 )
 from app.application.ml.pipelines.training.pedido_sugerido.utils import (
@@ -34,6 +24,14 @@ from app.application.ml.pipelines.training.pedido_sugerido.utils import (
     extraer_producto,
     filtrar_canastas_por_soporte,
 )
+from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.step_abc import StepABC
+from app.domain.core.logging import logger
+from app.domain.ml.model_metadata import ModelMetadata
+from app.domain.ml.model_registry import model_registry
+from app.domain.ml.pipeline_context import TrainingContext
+from app.domain.ml.training_params import SearchCVConfig
 
 
 class LoadDataStep(StepABC[TrainingContext]):

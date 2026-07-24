@@ -1,6 +1,6 @@
-from app.domain.utils.enums import TipoJob
 from app.application.jobs.job_registry import register_job
 from app.domain.models.tarea_programada import TareaProgramada
+from app.domain.utils.enums import TipoJob
 
 
 @register_job(TipoJob.PREDICT)

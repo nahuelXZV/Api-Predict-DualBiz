@@ -3,11 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django.db import models
+
 from app.domain.models.base_model_abc import BaseModelABC
 from app.domain.models.fuente_datos import FuenteDatos
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
+
     from app.domain.models.tarea_parametro import TareaParametro
 
 

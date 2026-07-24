@@ -1,7 +1,7 @@
 from asyncio.log import logger
 
-from app.domain.dtos.predict_dto import PredictResponseDTO
 from app.application.ml.model_manager import model_manager
+from app.domain.dtos.predict_dto import PredictResponseDTO
 
 
 class PredictService:

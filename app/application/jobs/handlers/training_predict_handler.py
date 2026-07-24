@@ -1,19 +1,18 @@
-from app.application.utils.parser import parse_bool, parse_int
-from app.domain.core.logging import logger
+from app.application.jobs.job_registry import register_job
+from app.application.ml.model_manager import model_manager
+from app.application.services.clientes_service import cliente_service
+from app.application.services.lote_prediccion_service import lote_prediccion_service
+from app.application.services.predict_service import predict_service
 from app.application.services.resultado_prediccion_service import (
     resultado_prediccion_service,
 )
-from app.application.services.lote_prediccion_service import lote_prediccion_service
 from app.application.services.version_modelo_service import version_modelo_service
-from app.application.services.clientes_service import cliente_service
-from app.application.services.predict_service import predict_service
-
+from app.application.utils.parser import parse_bool, parse_int
+from app.domain.core.logging import logger
 from app.domain.dtos.predict_dto import PredictResponseDTO
-from app.domain.utils.enums import TipoJob
 from app.domain.dtos.training_dto import TrainRequestDTO
-from app.application.jobs.job_registry import register_job
-from app.application.ml.model_manager import model_manager
 from app.domain.models.tarea_programada import TareaProgramada
+from app.domain.utils.enums import TipoJob
 
 
 @register_job(TipoJob.TRAINING_PREDICT)

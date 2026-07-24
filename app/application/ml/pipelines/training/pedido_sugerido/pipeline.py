@@ -1,5 +1,3 @@
-from app.domain.abstractions.pipeline_base import TrainingPipelineBase
-from app.domain.abstractions.data_source_abc import DataSourceABC
 from app.application.ml.pipeline_registry import register_pipeline
 from app.application.ml.pipelines.training.pedido_sugerido.steps import (
     CalculoAtributosDerivadosStep,
@@ -13,6 +11,8 @@ from app.application.ml.pipelines.training.pedido_sugerido.steps import (
     SaveModelStep,
     VecinosCercanosKnnStep,
 )
+from app.domain.abstractions.data_source_abc import DataSourceABC
+from app.domain.abstractions.pipeline_base import TrainingPipelineBase
 
 
 @register_pipeline("pedido_sugerido")

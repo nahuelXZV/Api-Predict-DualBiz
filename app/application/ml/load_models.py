@@ -1,8 +1,10 @@
+from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
 from app.domain.core.logging import logger
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import model_registry
-from app.application.ml.predictors.pedido_sugerido import PedidoSugerido
-from app.infrastructure.db.repositories.version_modelo_repository import VersionModeloRepository
+from app.infrastructure.db.repositories.version_modelo_repository import (
+    VersionModeloRepository,
+)
 
 _repo = VersionModeloRepository()
 

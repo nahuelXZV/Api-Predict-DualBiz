@@ -1,23 +1,23 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from app.application.utils.parser import parse_bool
-from app.domain.core.logging import logger
-from app.domain.ml.pipeline_context import PredictContext
-from app.domain.abstractions.step_abc import StepABC
-from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
 from app.application.ml.pipelines.predict.pedido_sugerido.constants import (
-    PRODUCTOS_DESTACADOS,
-    CAT_FEATURES,
     CANTIDAD_MINIMA,
-    TOP_N,
+    CAT_FEATURES,
     PORCENTAJE_PARETO,
+    PRODUCTOS_DESTACADOS,
+    TOP_N,
 )
 from app.application.ml.pipelines.predict.pedido_sugerido.utils import (
     apply_pareto,
-    build_features_candidatos,
     armar_respuesta,
+    build_features_candidatos,
 )
+from app.application.utils.parser import parse_bool
+from app.domain.abstractions.step_abc import StepABC
+from app.domain.core.logging import logger
+from app.domain.ml.pipeline_context import PredictContext
+from app.domain.ml.predict_params import BuildFeaturesRequest, ParetoConfig
 
 
 class LoadModelStep(StepABC[PredictContext]):

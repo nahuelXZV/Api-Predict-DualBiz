@@ -1,8 +1,7 @@
 import app.application.jobs.handlers  # noqa: F401 — activa el auto-registro de handlers
-
-from app.domain.utils.enums import TipoJob
 from app.application.jobs.job_registry import get_handler
 from app.domain.models.tarea_programada import TareaProgramada
+from app.domain.utils.enums import TipoJob
 
 
 class JobRunner:

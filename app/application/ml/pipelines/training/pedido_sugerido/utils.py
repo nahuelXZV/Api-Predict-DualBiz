@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
-from app.domain.core.logging import logger
-from app.domain.ml.training_params import SearchCVConfig
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import silhouette_score
-from sklearn.neighbors import NearestNeighbors
 from sklearn.model_selection import RandomizedSearchCV
+from sklearn.neighbors import NearestNeighbors
+
+from app.domain.core.logging import logger
+from app.domain.ml.training_params import SearchCVConfig
 
 
 def calcular_nro_clusters_kmeans(

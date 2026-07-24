@@ -4,11 +4,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from app.application.services.job_service import JobService, job_service
 from app.domain.core.config import settings, tz_now
 from app.domain.core.logging import logger
 from app.domain.models import TareaProgramada
 from app.domain.utils.enums import DisparadoPor
-from app.application.services.job_service import JobService, job_service
 from app.infrastructure.db.repositories.tarea_programada_repository import (
     TareaProgramadaRepository,
 )

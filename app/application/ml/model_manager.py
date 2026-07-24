@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import app.application.ml.pipelines.training  # noqa: F401 — activa el auto-registro de pipelines
-
+from app.application.ml.pipeline_registry import get_training_pipeline
+from app.application.services.fuente_datos_service import fuente_datos_service
+from app.application.services.version_modelo_service import (
+    VersionModeloService,
+    version_modelo_service,
+)
 from app.application.utils.modelo_utils import ObtenerVersion
 from app.domain.abstractions.data_source_abc import DataSourceABC
 from app.domain.core.exceptions import ModelNotFoundError
@@ -10,13 +15,7 @@ from app.domain.dtos.training_dto import TrainRequestDTO, TrainResponseDTO
 from app.domain.ml.model_metadata import ModelMetadata
 from app.domain.ml.model_registry import ModelRegistry, model_registry
 from app.domain.ml.pipeline_context import TrainingContext
-from app.application.ml.pipeline_registry import get_training_pipeline
 from app.infrastructure.data_sources.data_source_factory import DataSourceFactory
-from app.application.services.version_modelo_service import (
-    VersionModeloService,
-    version_modelo_service,
-)
-from app.application.services.fuente_datos_service import fuente_datos_service
 
 
 class ModelManager:

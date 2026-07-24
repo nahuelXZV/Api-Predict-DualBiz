@@ -1,6 +1,6 @@
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Generic, TypeVar
-from dataclasses import dataclass, field
 
 from app.domain.core.config import tz_now
 
