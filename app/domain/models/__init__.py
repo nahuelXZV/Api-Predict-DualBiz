@@ -1,4 +1,4 @@
-from app.domain.models.base_model_abc import BaseModelABC
+from app.domain.abstractions.base_model_abc import BaseModelABC
 from app.domain.models.tarea_programada import TareaProgramada
 from app.domain.models.tarea_parametro import TareaParametro
 from app.domain.models.ejecucion_tarea_programada import EjecucionTareaProgramada

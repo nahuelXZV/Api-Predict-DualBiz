@@ -1,9 +1,11 @@
 import pandas as pd
 
+from app.domain.abstractions.data_source_abc import DataSourceABC
 from app.domain.core.config import settings
 from app.domain.core.logging import logger
-from app.domain.abstractions.data_source_abc import DataSourceABC
-from app.infrastructure.data_sources.data_source_registry import register_datasource  # noqa: F401
+from app.infrastructure.data_sources.data_source_registry import (
+    register_datasource,  # noqa: F401
+)
 
 
 class CsvDataSourceStrategy(DataSourceABC):

@@ -1,800 +1,284 @@
-# Arquitectura del Proyecto — Api-Predict-DualBiz
+# Arquitectura actual — xApiPredict
 
-API REST para entrenamiento y predicción de modelos de Machine Learning. Construida con Django REST Framework siguiendo los principios de **Clean Architecture** y **SOLID**.
+Este documento describe el estado **implementado** del repositorio a septiembre de 2026. No es una arquitectura objetivo: señala también los límites y desalineaciones que existen hoy entre las capas y los contratos HTTP.
 
----
+## 1. Propósito y componentes
 
-## Tabla de contenido
+`xApiPredict` es una aplicación Django 5.2 que entrena y sirve predicciones del modelo `pedido_sugerido`. Además de la API REST, incluye una UI HTML mínima, persistencia de versiones y resultados, y un planificador de trabajos basado en APScheduler.
 
-1. [Visión general](#1-visión-general)
-2. [Estructura de carpetas](#2-estructura-de-carpetas)
-3. [Capas de la arquitectura](#3-capas-de-la-arquitectura)
-4. [Flujo de un request](#4-flujo-de-un-request)
-5. [El sistema de Pipeline](#5-el-sistema-de-pipeline)
-6. [Patrones de diseño](#6-patrones-de-diseño)
-7. [Modelo pedido_sugerido](#7-modelo-pedido_sugerido)
-8. [DataSources](#8-datasources)
-9. [Registro de modelos](#9-registro-de-modelos)
-10. [Registro de pipelines](#10-registro-de-pipelines)
-11. [Configuración y settings](#11-configuración-y-settings)
-12. [Logging](#12-logging)
-13. [Endpoints de la API](#13-endpoints-de-la-api)
-14. [Cómo agregar un nuevo modelo](#14-cómo-agregar-un-nuevo-modelo)
-
----
-
-## 1. Visión general
-
-El proyecto está organizado en **cuatro capas** con dependencias unidireccionales. Ninguna capa conoce a las que están por encima de ella.
-
-```
-┌─────────────────────────────────────────┐
-│           PRESENTATION                  │  Django REST Framework
-│   (Endpoints, Serializers, Views)       │
-└───────────────────┬─────────────────────┘
-                    │ usa
-┌───────────────────▼─────────────────────┐
-│           APPLICATION                   │  Casos de uso
-│   (PredictService, TrainingService)     │
-└───────────────────┬─────────────────────┘
-                    │ usa
-┌───────────────────▼─────────────────────┐
-│          INFRASTRUCTURE                 │  Implementaciones concretas
-│  (Pipelines, Models, DataSources, ML)   │
-└───────────────────┬─────────────────────┘
-                    │ implementa
-┌───────────────────▼─────────────────────┐
-│             DOMAIN                      │  Sin dependencias externas
-│  (Abstracciones, DTOs, Excepciones)     │
-└─────────────────────────────────────────┘
+```text
+Clientes HTTP / navegador
+        │
+        ├── Django REST Framework: /api/v1/
+        ├── HTML: / y /models/
+        └── Admin Django: /admin/
+                │
+                ▼
+    Presentación → servicios / casos de uso → modelos ML y trabajos
+                │                                  │
+                │                                  ├── registro de modelos en memoria
+                │                                  ├── pipelines de entrenamiento/predicción
+                │                                  └── adaptadores de lectura/escritura
+                ▼
+      ORM Django / repositorios ────────────────► SQLite o SQL Server
 ```
 
-**Regla fundamental:** las capas superiores pueden conocer a las inferiores, nunca al revés. El `domain` no importa nada de `infrastructure` ni de `presentation`.
+El diseño está inspirado en Clean Architecture, pero no es una separación estricta: los modelos de persistencia Django residen en `app/domain/models` y el `domain` importa Django y pandas. Por ello, las carpetas expresan responsabilidades, no fronteras libres de framework.
 
----
+## 2. Estructura del repositorio
 
-## 2. Estructura de carpetas
+```text
+config/
+  settings.py                    Configuración Django y DRF
+  urls.py                         Rutas raíz, OpenAPI, web y admin
+  app_startup_middleware.py       Carga de modelos y scheduler al primer request
 
-```
-Api-Predict-DualBiz/
-│
-├── config/                          # Configuración Django
-│   ├── settings.py                  # INSTALLED_APPS, REST_FRAMEWORK, etc.
-│   ├── urls.py                      # Rutas raíz (API + web + admin + Swagger)
-│   ├── asgi.py
-│   └── wsgi.py
-│
-├── app/
-│   │
-│   ├── domain/                      # ① CAPA DE DOMINIO
-│   │   ├── core/
-│   │   │   ├── config.py            # Settings con pydantic-settings
-│   │   │   ├── exceptions.py        # Excepciones tipadas del dominio
-│   │   │   └── logging.py           # Setup de structlog
-│   │   ├── dtos/
-│   │   │   ├── predict_dto.py       # PredictRequestDTO, PredictResponseDTO
-│   │   │   ├── training_dto.py      # TrainRequestDTO, TrainResponseDTO
-│   │   │   └── response_dto.py      # ResponseDTO[T], ResponseEnvelope
-│   │   └── ml/
-│   │       ├── abstractions/
-│   │       │   ├── ml_model_abc.py  # Contrato de todo modelo ML
-│   │       │   ├── step_abc.py      # Contrato de todo paso de pipeline
-│   │       │   ├── pipeline_base.py # Orquestador genérico de pasos
-│   │       │   └── data_source_abc.py  # Contrato de toda fuente de datos
-│   │       ├── model_metadata.py    # Dataclass con info del modelo
-│   │       ├── model_registry.py    # Registro thread-safe de modelos
-│   │       ├── pipeline_context.py  # BaseContext, TrainingContext, PredictContext
-│   │       ├── predict_params.py    # ParetoConfig, BuildFeaturesRequest
-│   │       └── training_params.py   # SearchCVConfig
-│   │
-│   ├── application/                 # ② CAPA DE APLICACIÓN
-│   │   └── services/
-│   │       ├── predict_service.py
-│   │       ├── training_service.py
-│   │       └── model_manager_service.py
-│   │
-│   ├── infrastructure/              # ③ CAPA DE INFRAESTRUCTURA
-│   │   └── ml/
-│   │       ├── pipeline_registry.py     # @register_pipeline + get_pipeline()
-│   │       ├── model_manager.py         # Orquesta train y predict
-│   │       ├── load_models.py           # Carga modelos al iniciar la app
-│   │       ├── data_sources/
-│   │       │   ├── data_source_factory.py
-│   │       │   ├── csv_data_source_strategy.py
-│   │       │   └── sqlserver_data_source_strategy.py
-│   │       ├── models/
-│   │       │   └── pedido_sugerido_model.py
-│   │       ├── training/
-│   │       │   └── pedido_sugerido/
-│   │       │       ├── pipeline.py      # PedidoSugeridoPipeline
-│   │       │       ├── steps.py         # 10 pasos de entrenamiento
-│   │       │       ├── queries.py       # Query SQL por defecto
-│   │       │       └── utils.py
-│   │       └── predict/
-│   │           └── pedido_sugerido/
-│   │               ├── pipeline.py      # predict_pedido_sugerido_pipeline()
-│   │               ├── steps.py         # 10 pasos de predicción
-│   │               └── utils.py
-│   │
-│   ├── presentation/                # ④ CAPA DE PRESENTACIÓN
-│   │   ├── api/
-│   │   │   ├── responses.py             # success_response(), error_response()
-│   │   │   ├── exception_handler.py     # Handler global de errores DRF
-│   │   │   └── v1/
-│   │   │       ├── urls.py
-│   │   │       └── endpoints/
-│   │   │           ├── health.py
-│   │   │           ├── predict.py
-│   │   │           ├── training.py
-│   │   │           ├── models.py
-│   │   │           └── serializers/
-│   │   │               ├── predict/     # request + response serializers
-│   │   │               ├── train/       # request + response serializers
-│   │   │               └── model/       # metadata serializer
-│   │   └── web/
-│   │       ├── urls.py
-│   │       └── views/
-│   │
-│   └── apps.py                      # AppConfig.ready() → setup inicial
-│
-├── storage/
-│   ├── models/                      # Modelos .pkl entrenados
-│   └── data/                        # Archivos CSV para entrenamiento local
-│
-├── logs/                            # Logs estructurados (JSON)
-├── requirements.txt
-├── .env.example
-└── manage.py
+app/
+  domain/
+    abstractions/                 Contratos: modelo, pipeline, step, fuente, writer y repo
+    core/                         Settings Pydantic, logging, excepciones y hora local
+    dtos/                         DTOs de entrenamiento, predicción y envelope
+    ml/                           Contextos, registry y metadata de modelo
+    models/                       Modelos Django para el esquema ml
+  application/
+    services/                     Orquestación de modelos, fuentes, jobs y resultados
+    ml/                           Manager, predictor y pipelines concretos
+    jobs/                         Registry, runner y handlers de tareas
+    utils/                        Conversión de parámetros y versión por fecha
+  infrastructure/
+    db/                           Configuración Django DB, migraciones y repositorios ORM
+    data_sources/                 Adaptadores CSV y SQL Server
+    data_writers/                 Escritura batch en SQL Server
+    jobs/                         Scheduler APScheduler
+  presentation/
+    api/                          Envelope y handler global de excepciones
+    api/v1/                       Views, rutas y serializers DRF
+    web/                          Vistas y templates HTML
+  apps.py                         Inicializa structlog desde AppConfig.ready()
+
+storage/
+  models/                         Artefactos joblib (.pkl) de los modelos entrenados
+  data/                           Archivos CSV que se usan como fuentes locales
+logs/                             Salida de structlog (si la configuración la habilita)
 ```
 
----
+## 3. Responsabilidades y dependencias
 
-## 3. Capas de la arquitectura
+| Área | Responsabilidad actual | Dependencias relevantes |
+|---|---|---|
+| `presentation` | Convierte HTTP a llamadas de servicio, valida serializers y devuelve respuestas DRF. | DRF, servicios de aplicación |
+| `application` | Coordina entrenamiento, inferencia, lotes y ejecución de tareas. Alberga los pipelines ML concretos. | Dominio, repositorios y adaptadores concretos |
+| `domain` | Define contratos, DTOs, contextos, registry y entidades persistentes. | Django ORM, pandas, Pydantic y structlog en algunos módulos |
+| `infrastructure` | Implementa acceso a DB, fuentes de datos, writers y scheduler. | Django ORM, pyodbc, APScheduler |
 
-### ① Domain — El núcleo
+La dirección de dependencias no es totalmente unidireccional. Por ejemplo, `ModelManager` (aplicación) instancia `DataSourceFactory` y servicios que usan repositorios concretos; `StepABC` (dominio) importa un servicio de aplicación de forma diferida para persistir el log de cada paso. Estas decisiones son parte del comportamiento actual y se deben considerar si se planifica una separación más estricta.
 
-Sin dependencias externas de ningún framework. Solo Python puro, `abc`, `dataclasses`, y `pandas`/`numpy` en los parámetros ML.
+## 4. Arranque y ciclo de vida
 
-**¿Por qué?** Si mañana migramos de Django a FastAPI, o de SQL Server a MongoDB, el dominio no cambia.
+1. Django carga `config.settings`, que inicializa `DATABASES` mediante `get_databases()`.
+2. `AppConfig.ready()` configura `structlog` y registra el evento `startup`.
+3. En la construcción del primer middleware, `AppStartupMiddleware` ejecuta una sola vez por proceso:
+   - `load_initial_models()` consulta las `VersionModelo` activas, carga su `.pkl` y las registra en memoria;
+   - inicia `JobScheduler` cuando `RUN_MAIN == "true"` o la aplicación no está en modo debug.
 
-Contiene:
-- **Abstracciones** (ABCs): contratos que el resto del sistema debe cumplir
-- **DTOs**: objetos de transferencia de datos entre capas
-- **Excepciones**: tipadas y descriptivas (`ModelNotFoundError`, `ModelNotReadyError`, etc.)
-- **ModelRegistry**: registro thread-safe de modelos cargados en memoria
-- **Contextos de pipeline**: `TrainingContext` y `PredictContext`
+El registro se rellena desde versiones activas de la base de datos; no recorre automáticamente `storage/models`. El scheduler es un `BackgroundScheduler` embebido en el proceso web, por lo que cada proceso que satisfaga la condición puede tener su propia instancia.
 
-### ② Application — Casos de uso
+## 5. Configuración y persistencia
 
-Orquesta el flujo entre presentación e infraestructura. No contiene lógica de negocio, solo coordinación.
+### Configuración
 
-```python
-# training_service.py
-class TrainingService:
-    def run(self, request: TrainRequestDTO) -> TrainResponseDTO:
-        return model_manager.train(request)
-```
+Hay dos fuentes de configuración:
 
-**¿Por qué existe esta capa si es tan delgada?** Porque es el punto de entrada limpio para cualquier cambio de orquestación. Si necesitamos agregar autorización, auditoría o notificaciones antes/después de entrenar, se agrega aquí sin tocar ni la presentación ni la infraestructura.
-
-### ③ Infrastructure — Implementaciones concretas
-
-Implementa todas las abstracciones del dominio:
-
-| Abstracción (domain) | Implementación (infrastructure) |
+| Componente | Uso |
 |---|---|
-| `DataSourceABC` | `CsvDataSourceStrategy`, `SqlServerDataSourceStrategy` |
-| `MLModelABC` | `PedidoSugeridoModel` |
-| `StepABC` | `LoadDataStep`, `EdaCleanDataStep`, ... (20+ steps) |
-| `PipelineBase` | `PedidoSugeridoPipeline` |
+| `config/settings.py` | Django, rutas, middleware, DRF, OpenAPI y templates. |
+| `app/domain/core/config.py` | Variables `.env` tipadas: entorno, logging, paths, timezone y conexiones. |
 
-### ④ Presentation — API REST
+La base de datos del ORM usa SQL Server (`mssql-django`) cuando `app_db_server` tiene valor; si no, usa `db.sqlite3` local. Las migraciones están bajo `app.infrastructure.db.migrations` y crean tablas en el esquema SQL Server `ml`.
 
-Valida requests, serializa responses, maneja errores HTTP. No contiene lógica de negocio.
+Las fuentes SQL Server de los pipelines no reutilizan automáticamente `ml_db_*`: requieren `driver`, `server`, `database` y credenciales —o `trusted_connection`— en los parámetros almacenados de la fuente de datos.
 
-```python
-# predict.py
-def post(self, request):
-    serializer = PredictRequestSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)          # valida y parsea
-    data = cast(dict, serializer.validated_data)
-    result = self.service.predict(...)                  # delega al service
-    return success_response(data=result, message="...") # serializa response
-```
+### Entidades persistidas
 
----
+Todas heredan de `BaseModelABC`, que agrega `id`, auditoría básica y borrado lógico (`eliminado`). Los repositorios filtran normalmente por `eliminado=False`.
 
-## 4. Flujo de un request
-
-### Predicción
-
-```
-POST /api/v1/predict/
-{
-  "model_name": "pedido_sugerido",
-  "parameters": {
-    "cliente_id": 14111,
-    "solo_nuevos": true,
-    "top_n": 50,
-    "cantidad_minima": 1.0,
-    "porcentaje_pareto": 20
-  }
-}
-```
-
-```
-PredictView.post()
-    │ valida con PredictRequestSerializer
-    ▼
-PredictService.predict(model_name, hyperparams)
-    │ delega
-    ▼
-ModelManager.predict(model_name, data)
-    │ busca modelo en registry
-    ▼
-model_registry.get("pedido_sugerido")  →  PedidoSugeridoModel
-    │ ejecuta predict
-    ▼
-PedidoSugeridoModel.predict(data)
-    │ crea contexto + pipeline
-    ▼
-PredictContext + predict_pedido_sugerido_pipeline()
-    │ ejecuta 10 steps en secuencia
-    ▼
-ctx.data_response = {
-    "knn_xgb":     [{ "producto_id", "nombre_producto", "cantidad_sugerida", "score", "fuente" }],
-    "apriori_xgb": [{ "producto_id", "nombre_producto", "antecedente", "cantidad_sugerida", "score", "fuente" }],
-    "destacados":  [...]
-}
-    │ retorna DTO
-    ▼
-PredictResponseDTO(predictions=..., success=True)
-    │ serializa
-    ▼
-HTTP 200 { "success": true, "data": { ... }, "errors": [] }
-```
-
-### Entrenamiento
-
-```
-POST /api/v1/train/
-{
-  "model_name": "pedido_sugerido",
-  "version": "1.0",
-  "data_source": {
-    "type": "sqlserver",
-    "params": { "query": "SELECT * FROM VentasHistoricas" }
-  }
-}
-```
-
-```
-TrainingView.post()
-    │ valida con TrainRequestSerializer
-    ▼
-TrainingService.run(TrainRequestDTO)
-    ▼
-ModelManager.train(request)
-    │ obtiene clase de pipeline del registry
-    ├── get_pipeline("pedido_sugerido") → PedidoSugeridoPipeline
-    │ construye datasource
-    ├── DataSourceFactory.build(config) → SqlServerDataSourceStrategy
-    │ instancia pipeline con datasource inyectado
-    ├── PedidoSugeridoPipeline(data_source)
-    │ crea contexto y ejecuta
-    ▼
-TrainingContext + pipeline.run(ctx)
-    │ ejecuta 10 steps en secuencia
-    ▼
-TrainResponseDTO(steps_executed=[...], success=True)
-    ▼
-HTTP 200 { "success": true, "data": { "steps_executed": [...] } }
-```
-
----
-
-## 5. El sistema de Pipeline
-
-Es el corazón de la arquitectura ML. Permite ejecutar secuencias de pasos complejos de forma ordenada, con manejo de errores y logging automático.
-
-### PipelineBase
-
-```
-┌─────────────────────────────────────────────────┐
-│                  PipelineBase[T]                │
-│                                                 │
-│  _steps: [StepABC, StepABC, StepABC, ...]       │
-│                                                 │
-│  run(ctx: T) → T:                               │
-│    for step in _steps:                          │
-│      if ctx.has_errors: DETENER                 │
-│      ctx = step(ctx)                            │
-│    return ctx                                   │
-└─────────────────────────────────────────────────┘
-```
-
-### StepABC — Template Method Pattern
-
-Cada paso implementa solo `execute()`. El método `__call__` es el **template** que agrega logging y registro de pasos automáticamente:
-
-```
-step.__call__(ctx)
-    │
-    ├── logger.info("step_started")
-    ├── ctx = step.execute(ctx)       ← lógica concreta del paso
-    ├── ctx.steps_executed.append(name)
-    └── logger.info("step_finished")
-```
-
-```python
-# Para crear un nuevo paso, solo hay que implementar execute():
-class MiNuevoPaso(StepABC[TrainingContext]):
-    def execute(self, ctx: TrainingContext) -> TrainingContext:
-        # lógica...
-        return ctx
-```
-
-### El contexto viaja por todos los pasos
-
-```
-ctx = TrainingContext(model_name="pedido_sugerido", version="1.0")
+```text
+FuenteDatos 1 ─── * FuenteDatosParametros
      │
-     ▼
-LoadDataStep      → ctx.raw_data = DataFrame(1M filas)
+     ├── * TareaProgramada 1 ─── * TareaParametro
+     │             │
+     │             └── * EjecucionTareaProgramada 1 ─── * LogTareaProgramada
      │
-     ▼
-EdaCleanDataStep  → ctx.clean_data = DataFrame filtrado
-     │
-     ▼
-ClusteringStep    → ctx.extra["model_km"] = modelo KMeans entrenado
-     │
-     ▼
-KnnStep           → ctx.extra["model_knn"] = modelo KNN entrenado
-     │
-     ▼
-...
-     │
-     ▼
-SaveModelStep     → guarda .pkl en disco
-     │
-     ▼
-RegistryModelStep → modelo disponible para predicciones
+     └── * VersionModelo (solo una relación de fuente por versión)
+
+VersionModelo 1 ─── * LotePrediccion 1 ─── * ResultadoPrediccion
 ```
 
-**Propagación de errores:** si un paso agrega a `ctx.errors`, el pipeline detiene la ejecución y lo reporta en el response. Ningún paso siguiente se ejecuta.
-
----
-
-## 6. Patrones de diseño
-
-### Strategy — Intercambiar comportamientos
-
-Permite cambiar la fuente de datos o el tipo de modelo sin modificar el código que los usa.
-
-```
-DataSourceABC
-    ├── CsvDataSourceStrategy       → pd.read_csv(path)
-    └── SqlServerDataSourceStrategy → pd.read_sql(query, pyodbc)
-
-MLModelABC
-    └── PedidoSugeridoModel         → KNN + Apriori + RandomForest
-    # └── OtroModelo                → cualquier otra lógica
-```
-
-### Factory — Construir objetos según configuración
-
-`DataSourceFactory.build(config)` decide qué implementación crear según el `type` del config del request:
-
-```python
-# El pipeline recibe siempre DataSourceABC, sin importar la fuente
-data_source = DataSourceFactory.build({"type": "csv", "params": {"path": "ventas.csv"}})
-data_source = DataSourceFactory.build({"type": "sqlserver", "params": {"query": "..."}})
-# Ambos son intercambiables para el pipeline
-```
-
-### Registry + Decorator — Auto-registro de pipelines
-
-En lugar de mantener un diccionario hardcodeado de pipelines, cada pipeline se registra a sí mismo con un decorador:
-
-```python
-# infrastructure/ml/pipeline_registry.py
-_TRAIN_PIPELINES: dict[str, type] = {}
-
-def register_pipeline(model_name: str):
-    def decorator(cls):
-        _TRAIN_PIPELINES[model_name] = cls
-        return cls
-    return decorator
-
-# training/pedido_sugerido/pipeline.py
-@register_pipeline("pedido_sugerido")   # ← se registra solo
-class PedidoSugeridoPipeline(PipelineBase):
-    ...
-```
-
-El `ModelManager` solo llama `get_pipeline("pedido_sugerido")` y no sabe nada de qué pipelines existen. Para agregar un nuevo modelo, solo se decora su clase y se importa en `training/__init__.py`.
-
-### Template Method — Estructura fija, comportamiento variable
-
-`StepABC.__call__` define el flujo fijo (log → ejecutar → registrar). Las subclases solo implementan la lógica variable en `execute()`.
-
-`PipelineBase.run()` define el flujo fijo (iterar pasos, detectar errores, loggear). Las subclases definen qué pasos se agregan en `__init__`.
-
-### Singleton thread-safe — ModelRegistry
-
-Un único registro global de modelos cargados, protegido con `threading.Lock()` para soportar múltiples requests simultáneos:
-
-```python
-model_registry = ModelRegistry()  # instancia global en domain/ml/model_registry.py
-```
-
-### Composite — Pipeline de pasos
-
-`PipelineBase` compone una lista de `StepABC` y los trata a todos uniformemente con `step(ctx)`. Agregar o quitar pasos no requiere cambiar el orquestador.
-
----
-
-## 7. Modelo pedido_sugerido
-
-Recomienda productos a clientes basándose en tres fuentes:
-
-| Fuente | Técnica | Descripción |
-|---|---|---|
-| `knn_xgb` | KNN + RandomForest | Productos que compran clientes similares, cantidad predicha por RF |
-| `apriori_xgb` | Apriori + RandomForest | Expande los productos KNN-Pareto con reglas de asociación, cantidad predicha por RF |
-| `destacados` | Lista estática | Ofertas y liquidaciones configurables |
-
-El identificador de producto en todo el pipeline es **`producto_id`** (no `nombre_producto`). El nombre se incluye en la respuesta como campo adicional pero no se usa como clave de lookup.
-
-### Artefactos que guarda el modelo
-
-Al entrenar, se serializa un `.pkl` con esta estructura:
-
-```python
-{
-    "artefactos": {
-        "model_knn": {
-            "model": NearestNeighbors,     # vecinos cercanos
-            "scaler": StandardScaler,       # normalización
-            "enc_cat": OneHotEncoder,       # encoding categóricas
-            "feats_num": [...],             # nombres features numéricas
-            "cat_features": [...],          # nombres features categóricas
-            "customers": [...],             # lista ordenada de cliente_ids
-            "data": DataFrame,             # perfil agregado por cliente (para lookup)
-        },
-        "model_apriori": {
-            "rules": DataFrame,            # reglas A→B con confidence, lift, support
-                                           # indexadas por producto_id (no nombre)
-        },
-        "model_rf_cantidad": {
-            "model": RandomForestRegressor, # predice cantidad vendida
-            "encoder": OrdinalEncoder,      # encoding para RF
-            "features": [...],              # nombres de features
-        },
-        "historial_ventas": DataFrame,     # historial slim de transacciones (13 columnas)
-                                           # solo las columnas necesarias en predicción
-    }
-}
-```
-
-### Steps de entrenamiento
-
-```
-LoadDataStep                    → carga datos crudos del datasource
-EdaCleanDataStep                → limpia nulos, normaliza nombres de columnas
-CalculoAtributosDerivadosStep   → calcula 15+ features (recencia, frecuencia, etc.)
-ClusteringKMeansStep            → segmenta clientes (k óptimo por Silhouette Score)
-                                   búsqueda de k con 30% del dataset (SAMPLE_FRAC_PARAMS)
-VecinosCercanosKnnStep          → entrena KNN (n óptimo por método del codo)
-                                   búsqueda de n con 30% del dataset; sin perfil_pivot
-ConjuntoReglasAprioriStep       → genera reglas de asociación entre productos
-                                   pre-filtra canastas por soporte mínimo antes de TransactionEncoder
-                                   max_len=2 para evitar explosión combinatorial de memoria
-PrepareDataArbolesStep          → construye tabla de entrenamiento para RF con producto_id
-EnsembleArbolesRandomForestStep → entrena RF con RandomizedSearchCV
-                                   búsqueda de hiperparámetros con 30% del dataset
-SaveModelStep                   → serializa artefactos a .pkl; historial_ventas con solo 13 columnas
-RegistryModelStep               → registra modelo en memoria para predicciones
-```
-
-### Steps de predicción
-
-El pipeline aplica **Pareto sobre KNN antes de Apriori**: Apriori solo expande los mejores productos que ya recomendó KNN, no todo el historial del cliente.
-
-```
-LoadModelStep              → desempaqueta artefactos del .pkl cargado
-ValidateClienteStep        → verifica cliente_id existe en historial
-KnnFindNeighborsStep       → encuentra clientes similares con cosine distance
-KnnBuildCandidatesStep     → construye candidatos desde historial de vecinos (groupby, sin pivot)
-KnnRankAndPredictStep      → asigna score + predice cantidad con RF
-ParetoFilterStep           → filtra KNN por Pareto (top_n, cantidad_minima, %)
-                              resultado es la entrada de antecedentes para Apriori
-AprioriBuildCandidatesStep → busca reglas cuyo antecedente sea un producto KNN-Pareto
-                              excluye siempre los productos que KNN ya recomendó
-AprioriRankAndPredictStep  → asigna score (confidence × lift) + predice cantidad con RF
-DestacadosStep             → agrega productos destacados
-BuildResponseStep          → ensambla respuesta final
-```
-
----
-
-## 8. DataSources
-
-Toda fuente de datos implementa `DataSourceABC`:
-
-```python
-class DataSourceABC(ABC):
-    @abstractmethod
-    def load(self) -> pd.DataFrame: ...
-```
-
-### Fuentes disponibles
-
-**CSV** — para desarrollo local o datos históricos en planilla:
-```json
-{
-  "type": "csv",
-  "params": {
-    "path": "ventas_2024.csv",
-    "separator": ",",
-    "encoding": "utf-8"
-  }
-}
-```
-
-**SQL Server** — para producción:
-```json
-{
-  "type": "sqlserver",
-  "params": {
-    "query": "SELECT * FROM dbo.VentasHistoricas WHERE FechaVenta >= '2024-01-01'",
-    "connection_string": "DRIVER=...;SERVER=...;DATABASE=..."
-  }
-}
-```
-
-Si no se pasa `connection_string`, se usa la configurada en `.env` (`ml_db_*`).
-
-### Agregar una nueva fuente
-
-1. Crear `app/infrastructure/ml/data_sources/mongo_data_source_strategy.py` que herede de `DataSourceABC`
-2. Agregar el caso `"mongodb"` en `DataSourceFactory.build()`
-
----
-
-## 9. Registro de modelos
-
-`ModelRegistry` mantiene en memoria los modelos cargados. Es thread-safe con `threading.Lock()`.
-
-### Ciclo de vida de un modelo
-
-```
-Startup (AppConfig.ready())
-    └── load_initial_models()
-          └── busca *.pkl en storage/models/
-                └── PedidoSugeridoModel.load(path)
-                      └── model_registry.register("pedido_sugerido", model)
-
-Entrenamiento (POST /train/)
-    └── RegistryModelStep
-          └── carga nuevo .pkl
-                └── model_registry.register("pedido_sugerido", model)
-                      # reemplaza el anterior en memoria
-
-Predicción (POST /predict/)
-    └── model_registry.get("pedido_sugerido")
-          └── PedidoSugeridoModel.predict(data)
-```
-
----
-
-## 10. Registro de pipelines
-
-El decorador `@register_pipeline` permite que cada pipeline se registre a sí mismo. El `ModelManager` no necesita saber qué pipelines existen.
-
-```
-Importación de app.infrastructure.ml.training
-    └── training/__init__.py importa PedidoSugeridoPipeline
-          └── el decorador @register_pipeline("pedido_sugerido") se ejecuta
-                └── _TRAIN_PIPELINES["pedido_sugerido"] = PedidoSugeridoPipeline
-
-POST /train/ con model_name="pedido_sugerido"
-    └── get_pipeline("pedido_sugerido")
-          └── PedidoSugeridoPipeline
-```
-
-Para registrar un nuevo pipeline, solo se agrega una línea en `training/__init__.py`.
-
----
-
-## 11. Configuración y settings
-
-Hay dos sistemas de configuración separados:
-
-| Archivo | Framework | Para qué |
-|---|---|---|
-| `config/settings.py` | Django | INSTALLED_APPS, middleware, REST_FRAMEWORK |
-| `app/domain/core/config.py` | pydantic-settings | Variables de negocio (paths, DB, etc.) |
-
-### Variables de entorno
-
-Copiar `.env.example` a `.env` y completar:
-
-```bash
-SECRET_KEY=tu-clave-secreta-aqui
-
-app_env=development
-app_debug=true
-log_level=INFO
-timezone=America/La_Paz
-
-path_data=storage/data
-path_models=storage/models
-
-ml_db_driver=ODBC Driver 17 for SQL Server
-ml_db_server=tu-servidor
-ml_db_database=tu-base-de-datos
-ml_db_user=tu-usuario
-ml_db_password=tu-contraseña
-
-ALLOWED_HOSTS=localhost,127.0.0.1
-```
-
-`ml_db_connection_string` se construye automáticamente desde los campos individuales.
-
----
-
-## 12. Logging
-
-Se usa **structlog** con salida dual:
-
-| Destino | Formato | Cuándo |
-|---|---|---|
-| Consola | Human-readable (colores) | `app_debug=true` |
-| Consola | JSON | `app_debug=false` |
-| `logs/app.log` | JSON siempre | Siempre, rotación diaria, 30 días |
-
-### Uso
-
-```python
-from app.domain.core.logging import logger
-
-logger.info("model_registered", name="pedido_sugerido", version="1.0")
-logger.warning("cliente_sin_historial", cliente_id=14111)
-logger.error("pipeline_failed", error=str(e))
-```
-
-Todos los logs incluyen automáticamente: timestamp con timezone, nivel, y nombre del logger.
-
----
-
-## 13. Endpoints de la API
-
-| Método | URL | Descripción |
-|---|---|---|
-| `GET` | `/api/v1/` | Health check |
-| `POST` | `/api/v1/predict/` | Ejecutar predicción |
-| `POST` | `/api/v1/train/` | Entrenar modelo |
-| `GET` | `/api/v1/list_models/` | Listar modelos en memoria |
-| `GET` | `/api/docs/` | Swagger UI (OpenAPI) |
-| `GET` | `/api/redoc/` | ReDoc |
-
-### Formato de respuesta
-
-Todas las respuestas siguen el mismo envelope:
+`VersionModelo` guarda el nombre, versión, ruta del `.pkl`, parámetros y estado activo. Al concluir un entrenamiento correcto, el servicio desactiva las versiones anteriores del mismo modelo y crea una nueva versión activa. `LotePrediccion` y `ResultadoPrediccion` persisten los resultados de ejecuciones masivas.
+
+## 6. API, web y manejo de errores
+
+### Rutas registradas
+
+| Método | Ruta | Implementación | Respuesta actual |
+|---|---|---|---|
+| `GET` | `/` | `HomeView` | Template HTML `app/home.html`. |
+| `GET` | `/models/` | `web.ModelsView` | Template HTML con modelos registrados. |
+| `GET` | `/api/v1/` | `HealthView` | JSON directo: `{ "status": "ok" }`. |
+| `POST` | `/api/v1/predict/` | `PredictView` | Envelope estándar con `PredictResponseDTO`. |
+| `POST` | `/api/v1/train/` | `TrainingView` | Ruta expuesta; ver desalineaciones. |
+| `GET` | `/api/v1/list_models/` | `ModelsView` | Envelope con metadata del registry. |
+| `GET` | `/api/schema/` | drf-spectacular | Esquema OpenAPI. |
+| `GET` | `/api/docs/` / `/api/redoc/` | drf-spectacular | Swagger UI / ReDoc. |
+
+Excepto el health check, las views REST usan `success_response()` y devuelven:
 
 ```json
 {
   "success": true,
-  "message": "Descripción de lo que pasó.",
-  "data": { ... },
+  "message": "...",
+  "data": {},
   "errors": [],
-  "timestamp": "2026-04-05T12:00:00-04:00"
+  "timestamp": "2026-09-01T..."
 }
 ```
 
-### Serializers por endpoint
+`api_exception_handler` transforma errores DRF conocidos y excepciones no controladas a ese mismo envelope. Los serializers solo se usan para validación y documentación: el payload exitoso se convierte desde dataclasses por `responses._serialize`.
 
-Los serializers viven en `presentation/api/v1/endpoints/serializers/` organizados por caso de uso:
+No hay endpoints registrados para administrar fuentes de datos, tareas, clientes, versiones, lotes o resultados. Esas capacidades existen en servicios y repositorios, y actualmente se invocan desde jobs o código interno. `admin.py` importa las entidades, pero no las registra con `admin.site.register`, por lo que el admin no las expone por ese archivo.
 
-```
-serializers/
-  predict/
-    request_serializer.py   → valida entrada del POST /predict/
-    response_serializer.py  → documenta salida (OpenAPI)
-  train/
-    request_serializer.py   → valida entrada del POST /train/
-    response_serializer.py  → documenta salida (OpenAPI)
-  model/
-    metadata_serializer.py  → documenta salida del GET /list_models/
-```
+## 7. Modelo en memoria y predicción individual
 
----
+`ModelRegistry` es una instancia global protegida con `threading.Lock`. Acepta reemplazar un modelo registrado por defecto y expone metadatas para listar modelos. Solo registra instancias de `MLModelABC` que estén cargadas.
 
-## 14. Cómo agregar un nuevo modelo
-
-Ejemplo: agregar un modelo `ventas_proyectadas`.
-
-### Paso 1 — Crear el modelo ML
-
-```python
-# app/infrastructure/ml/models/ventas_proyectadas_model.py
-from app.domain.ml.abstractions.ml_model_abc import MLModelABC
-
-class VentasProyectadasModel(MLModelABC):
-    def load(self, path: str) -> None:
-        self._model = joblib.load(path)
-
-    def predict(self, data: dict) -> dict:
-        ctx = PredictContext(...)
-        pipeline = ventas_proyectadas_predict_pipeline()
-        ctx = pipeline.run(ctx)
-        return ctx.data_response
+```text
+POST /api/v1/predict/
+  → PredictView
+  → PredictService
+  → ModelManager.predict()
+  → ModelRegistry.get(nombre)
+  → PedidoSugerido.predict(parámetros)
+  → PedidoSugeridoPredictPipeline.run(PredictContext)
+  → lista de recomendaciones
 ```
 
-### Paso 2 — Crear los pasos de entrenamiento
+El único predictor concreto es `app.application.ml.predictors.pedido_sugerido.PedidoSugerido`. Carga un diccionario joblib con `artefactos` y crea un `PredictContext`; no existe una capa `infrastructure/ml/models` como indicaba la documentación anterior.
 
-```python
-# app/infrastructure/ml/training/ventas_proyectadas/steps.py
-class LoadDataStep(StepABC[TrainingContext]):
-    def execute(self, ctx: TrainingContext) -> TrainingContext:
-        ...
-        return ctx
+El pipeline de predicción construye siempre los diez pasos siguientes:
 
-class EntrenarModeloStep(StepABC[TrainingContext]):
-    def execute(self, ctx: TrainingContext) -> TrainingContext:
-        ...
-        return ctx
+1. `LoadModelStep`
+2. `ValidateClienteStep`
+3. `KnnFindNeighborsStep`
+4. `KnnBuildCandidatesStep`
+5. `KnnRankAndPredictStep`
+6. `ParetoFilterStep`
+7. `AprioriBuildCandidatesStep`
+8. `AprioriRankAndPredictStep`
+9. `DestacadosStep`
+10. `BuildResponseStep`
+
+Combina vecinos cercanos con un regresor `RandomForestRegressor` para cantidad, reglas Apriori y destacados estáticos. Apriori usa como antecedentes las recomendaciones KNN filtradas por Pareto. Las opciones `recomendacion_apriori` y `recomendacion_destacados` deciden si esas listas se incluyen en la respuesta final. La salida es una lista plana de resultados normalizados por `armar_respuesta`, no un objeto con secciones `knn_xgb`, `apriori_xgb` y `destacados`.
+
+## 8. Entrenamiento y artefactos
+
+El entrenamiento se ejecuta correctamente desde un `TrainRequestDTO` asociado a una `TareaProgramada` (usado por los handlers). `ModelManager` toma los parámetros de la tarea, obtiene la fuente por `fuente_datos_id`, construye el datasource registrado y ejecuta el pipeline de entrenamiento registrado.
+
+```text
+TareaProgramada + FuenteDatos
+  → ModelManager.train()
+  → DataSourceFactory.build(tipo, parámetros)
+  → PedidoSugeridoPipeline.set_datasource()
+  → TrainingContext
+  → pipeline.run()
+  → .pkl + ModelRegistry + VersionModelo activa
 ```
 
-### Paso 3 — Crear el pipeline de entrenamiento con el decorador
+Los pasos del pipeline `pedido_sugerido` son:
 
-```python
-# app/infrastructure/ml/training/ventas_proyectadas/pipeline.py
-from app.infrastructure.ml.pipeline_registry import register_pipeline
+1. `LoadDataStep`
+2. `EdaCleanDataStep`
+3. `CalculoAtributosDerivadosStep`
+4. `ClusteringKMeansStep`
+5. `VecinosCercanosKnnStep`
+6. `ConjuntoReglasAprioriStep`
+7. `PrepareDataArbolesStep`
+8. `EnsembleArbolesRandomForestStep`
+9. `SaveModelStep`
+10. `RegistryModelStep`
 
-@register_pipeline("ventas_proyectadas")
-class VentasProyectadasPipeline(PipelineBase):
-    def __init__(self, data_source: DataSourceABC) -> None:
-        super().__init__()
-        self.add_step(LoadDataStep(data_source))
-        self.add_step(EntrenarModeloStep())
-        # ...
+El `.pkl` generado contiene `model_km`, `model_knn`, `model_apriori`, `model_rf_cantidad` e `historial_ventas`, agrupados en `artefactos`. Se guarda con un nombre `modelo_<nombre>_<versión>.pkl`; la versión la genera `ObtenerVersion()` a partir de la fecha actual (`YYYY.MM.DD`).
+
+`PipelineBase.run()` reconstruye la lista de pasos en cada ejecución y la corta si el contexto contiene errores. `StepABC.__call__()` mide duración, captura excepciones, agrega el paso ejecutado y, cuando existe `ejecucion_id`, persiste un `LogTareaProgramada`.
+
+## 9. Fuentes y destinos de datos
+
+Las implementaciones se registran por decorador en registries en memoria y se resuelven mediante factories.
+
+| Contrato | Tipo registrado | Implementación | Uso |
+|---|---|---|---|
+| `DataSourceABC` | `csv` | `CsvDataSourceStrategy` | Lee `settings.path_data + path` con pandas. |
+| `DataSourceABC` | `sqlserver` | `SqlServerDataSourceStrategy` | Ejecuta una query con pyodbc y lee por lotes de 5.000 filas. |
+| `DataWriterABC` | `sqlserver` | `SqlServerBatchWriter` | Inserta un DataFrame con `fast_executemany`, transacción y lotes configurables. |
+
+Los parámetros de conexión y de la query se almacenan como pares clave/valor en `FuenteDatosParametros`. No se tipan al recuperarse: el repositorio devuelve `dict[str, str]`; cada consumidor convierte lo que necesita.
+
+## 10. Tareas programadas
+
+`JobScheduler` consulta las `TareaProgramada` activas con expresión cron y registra un job por tarea. Ante un fallo, programa reintentos con `DateTrigger` hasta `max_reintentos`, con espera `delay_reintento_segundos`.
+
+```text
+APScheduler → JobService.ejecutar()
+  → crea EjecucionTareaProgramada (ejecutando)
+  → JobRunner → handler registrado por TipoJob
+  → marca exitosa o fallida
+  → opcionalmente programa reintento
 ```
 
-### Paso 4 — Registrar el import en `training/__init__.py`
+Handlers registrados:
 
-```python
-# app/infrastructure/ml/training/__init__.py
-from app.infrastructure.ml.training.pedido_sugerido.pipeline import PedidoSugeridoPipeline  # noqa: F401
-from app.infrastructure.ml.training.ventas_proyectadas.pipeline import VentasProyectadasPipeline  # noqa: F401
-```
+| Tipo | Estado |
+|---|---|
+| `training` | Entrena y falla la ejecución si el DTO de respuesta indica error. |
+| `training_predict` | Entrena, crea un lote, recorre todos los clientes y persiste resultados. |
+| `consulta_sql` | Lee una fuente y escribe el DataFrame a SQL Server. |
+| `predict` | Registrado pero sin implementación; su función no acepta `ejecucion_id`, mientras que `JobRunner` lo envía. Actualmente fallaría al ejecutarse. |
 
-Eso es todo. `ModelManager` no necesita modificarse.
+Las rutas web y REST no exponen acciones para crear, actualizar o ejecutar estas tareas; `JobScheduler` sí contiene métodos internos para ello.
 
-### Paso 5 — Crear el pipeline de predicción
+## 11. Patrones empleados
 
-```python
-# app/infrastructure/ml/predict/ventas_proyectadas/pipeline.py
-def ventas_proyectadas_predict_pipeline() -> PipelineBase:
-    pipeline = PipelineBase()
-    pipeline.add_step(MiPasoDePrediccion())
-    return pipeline
-```
+| Patrón | Aplicación |
+|---|---|
+| Strategy + Factory | Fuentes y writers se registran y se construyen según su tipo. |
+| Registry + Decorator | Pipelines y handlers se auto-registran al importar sus módulos. |
+| Template Method | `StepABC.__call__()` controla log, medición, captura y persistencia; cada paso implementa `execute()`. |
+| Composite | `PipelineBase` trata una secuencia de pasos con la misma interfaz. |
+| Repository | Repositorios ORM encapsulan las consultas y el borrado lógico. |
+| Singleton práctico | `model_registry`, servicios, manager, scheduler y runner son instancias globales de módulo. |
 
----
+## 12. Desalineaciones y deuda técnica observada
 
-## Dependencias principales
+Estas observaciones son importantes para quien extienda o consuma la API:
 
-| Librería | Versión | Uso |
-|---|---|---|
-| Django | 5.2 | Framework web |
-| djangorestframework | 3.16.0 | API REST |
-| drf-spectacular | 0.28.0 | Swagger / OpenAPI |
-| pydantic-settings | 2.13.1 | Configuración tipada |
-| structlog | 25.5.0 | Logging estructurado |
-| scikit-learn | 1.8.0 | KMeans, KNN, RandomForest |
-| mlxtend | 0.24.0 | Apriori, association rules |
-| pandas | 3.0.1 | Manipulación de datos |
-| joblib | 1.5.3 | Serialización de modelos |
-| pyodbc | — | Conexión SQL Server |
+1. **Contrato de entrenamiento roto.** `TrainingView` valida `model_name`, `version` y `data_source`, pero construye `TrainRequestDTO` con esos mismos argumentos. El DTO actual solo declara `tarea_programada`, `parameters` y `ejecucion_id`; por tanto el endpoint lanzará `TypeError` antes de entrenar. El camino respaldado por el código es el handler `training`, que recibe una `TareaProgramada` con parámetros y fuente ya persistidas.
+2. **OpenAPI de modelos desactualizado.** `ModelMetadataSerializer` documenta `feature_names`, `hyperparams` y `trained_at`, mientras que `ModelMetadata` contiene `parameters`, `loaded_at`, `extra` y `path_model`. La documentación de `/list_models/` no representa fielmente el objeto serializado.
+3. **Metadata de inferencia limitada.** Al cargar o registrar un modelo, solo se asignan nombre, versión y ruta. Los parámetros/extra no se restauran desde `VersionModelo`, aunque `PedidoSugerido.predict()` los copia al contexto.
+4. **Modelos Django dentro de domain.** Esto impide considerar esa capa independiente de infraestructura o de Django sin una refactorización posterior.
+5. **Seguridad de secretos en logs.** Los builders SQL Server registran el connection string construido, que puede contener contraseña. Es un riesgo operativo a corregir antes de producción.
+6. **Admin sin registros.** El módulo importa las entidades, pero no las registra; el panel no ofrece gestión de esos modelos por la configuración actual.
+
+## 13. Cómo extender el sistema
+
+Para una nueva fuente de datos, implementar `DataSourceABC`, registrar un builder con `@register_datasource("tipo")` y asegurar que su módulo se importe desde `app.infrastructure.data_sources.__init__`.
+
+Para un writer, aplicar el mismo esquema con `DataWriterABC` y `@register_datawriter`.
+
+Para un nuevo modelo entrenable:
+
+1. Crear un predictor que implemente `MLModelABC`.
+2. Crear un `TrainingPipelineBase` y registrar su clase con `@register_pipeline("nombre")`.
+3. Importar el módulo del pipeline desde `app.application.ml.pipelines.training.__init__` para activar el registro.
+4. Implementar el pipeline de predicción y ajustar `load_initial_models()` —hoy instancia `PedidoSugerido` para todas las versiones activas— para resolver el predictor correcto.
+5. Crear la tarea, fuente de datos y parámetros persistidos que usará el job de entrenamiento.
+
+Antes de habilitarlo por HTTP, alinear el serializer, el DTO y la view de entrenamiento, y actualizar los serializers de respuesta para que OpenAPI refleje los objetos reales.
